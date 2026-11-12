@@ -31,3 +31,7 @@ desk init <ツリーのパス>
 go test ./...
 go vet ./...
 ```
+
+## ライセンス
+
+[MIT](LICENSE)
