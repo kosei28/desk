@@ -9,6 +9,7 @@ pub mod doc;
 pub mod edit;
 pub mod frontmatter;
 pub mod graph;
+mod html;
 pub mod link;
 pub mod path;
 pub mod query;

@@ -8,6 +8,7 @@ use regex::Regex;
 use serde::{Serialize, Serializer};
 
 use crate::frontmatter::{self, Field, Frontmatter, Scalar, Value};
+use crate::html;
 use crate::link::{Link, LinkForm, resolve};
 use crate::path::Info;
 use crate::rules::{Kind, NOW_SECTION, link_keys};
@@ -135,7 +136,7 @@ impl Doc {
         s.find(&v.value)
     }
 
-    /// 本文を CommonMark として読み、見出しとリンクを拾う。
+    /// 本文を CommonMark として読み、見出しとリンク（生の HTML の中のものも）を拾う。
     fn parse_body(&mut self) {
         let body = self.lines[self.body_start..].join("\n");
         let starts: Vec<usize> = std::iter::once(0)
@@ -177,6 +178,8 @@ impl Doc {
         let mut open: Vec<(usize, Link, Option<Range<usize>>)> = Vec::new();
         // 入っている引用・リスト・脚注の数。見出しはこの外のものだけを文書の節にする
         let mut nested = 0usize;
+        // 読んでいるブロックの HTML の行の範囲
+        let mut html_block: Vec<Range<usize>> = Vec::new();
         for (ev, r) in parser.into_offset_iter() {
             match &ev {
                 Event::End(TagEnd::Heading(_)) => {
@@ -232,6 +235,12 @@ impl Doc {
                 ) => {
                     let at = r.start;
                     open.push((at, inline_link(&body, r, link_type, &dest_url, &pos), None));
+                }
+                Event::InlineHtml(_) => body_links.extend(html_links(&body, &[r], &pos)),
+                Event::Html(_) => html_block.push(r),
+                Event::End(TagEnd::HtmlBlock) => {
+                    body_links.extend(html_links(&body, &html_block, &pos));
+                    html_block.clear();
                 }
                 _ => {}
             }
@@ -407,6 +416,44 @@ fn inline_link(
         _ => {}
     }
     l
+}
+
+/// 生の HTML のリンク。HTML は本文の中の範囲 parts をつないだもの（ブロックの HTML は行ごとに、引用やリストの印を除いて渡る）。
+fn html_links(
+    body: &str,
+    parts: &[Range<usize>],
+    pos: &impl Fn(usize) -> (usize, usize),
+) -> Vec<(usize, Link)> {
+    let html: String = parts.iter().map(|r| &body[r.clone()]).collect();
+    // HTML の中の位置 → 本文の中の位置
+    let in_body = |mut off: usize| {
+        for r in parts {
+            if off < r.len() {
+                return r.start + off;
+            }
+            off -= r.len();
+        }
+        parts.last().map_or(0, |r| r.end)
+    };
+    html::links(&html)
+        .into_iter()
+        .map(|h| {
+            // 書いてあるとおりの先（行をまたいで引用の印などを挟まない）なら、書き換えられるように位置を持つ
+            let at =
+                h.at.map(in_body)
+                    .filter(|&at| body[at..].starts_with(&h.raw));
+            let at_or_attr = at.unwrap_or_else(|| in_body(h.attr));
+            let (line, start) = pos(at_or_attr);
+            let l = Link {
+                key: "body".to_string(),
+                raw: h.raw,
+                line,
+                start: at.map(|_| start),
+                ..Link::default()
+            };
+            (at_or_attr, l)
+        })
+        .collect()
 }
 
 /// 範囲 r の中で、印（`](` か `]:`）の後に書いてある先 dest の位置。書いてあるとおりでなければ None。

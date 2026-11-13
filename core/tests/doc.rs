@@ -272,3 +272,46 @@ fn wiki_links() {
         ]
     );
 }
+
+/// 生の HTML の a の href・img の src・source の srcset もリンクとして拾う。コードの中は拾わない。
+#[test]
+fn html_links() {
+    let d = body(&[
+        "文の中の <a href=\"a.md\">a</a> と <img",
+        "src=\"assets/b.png\"> と `<a href=\"code.md\">` と [md](c.md)",
+        "",
+        "<div>",
+        "<a",
+        "  href=\"d.md#節\">d</a>",
+        "<!-- <a href=\"comment.md\"> -->",
+        "<picture><source srcset=\"assets/e.png 1x, assets/f.png 2x\"></picture>",
+        "</div>",
+        "",
+        "> <p>引用の中の",
+        "> <a href=\"g.md\">g</a></p>",
+        "",
+        "<a href=\"h&amp;i.md\" title=\"文字参照\">h</a>",
+        "",
+        "```",
+        "<a href=\"fence.md\">",
+        "```",
+    ]);
+    assert_eq!(
+        links(&d),
+        [
+            ("a.md", 0, Some(22)),
+            ("assets/b.png", 1, Some(5)),
+            ("c.md", 1, Some(54)),
+            ("d.md#節", 5, Some(8)),
+            ("assets/e.png", 7, Some(25)),
+            ("assets/f.png", 7, Some(42)),
+            ("g.md", 11, Some(11)),
+            ("h&i.md", 13, None),
+        ]
+    );
+    let l = &d.links[3];
+    assert_eq!(
+        (l.form, l.target.as_str(), l.anchor.as_str()),
+        (LinkForm::Relative, "projects/app/knowledge/d.md", "節")
+    );
+}
