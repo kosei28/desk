@@ -90,7 +90,7 @@ desk graph <パス> [--in | --out] [--via <キー>,...] [--depth <n> | all]
 desk graph --all [--via ...] [--format edges | dot]
 ```
 
-- ノードはファイル（`assets/` の中も含む）、辺は相対パスのリンクで、frontmatter のキーが辺の種類になる（本文の中は `body`）。方向は「書いてあるファイル → 指された先」。`--in` は指されているもの、`--out` は指しているもの、省略は両方を 1 段
+- ノードはファイル（`assets/` の中も含む）、辺は相対パスのリンクで、frontmatter のキーが辺の種類になる（本文の中は `body`。markdown のリンクと、生の HTML の `a` の `href`・`img` の `src`・`source` の `srcset`。コードの中は読まない）。方向は「書いてあるファイル → 指された先」。`--in` は指されているもの、`--out` は指しているもの、省略は両方を 1 段
 - 出力の各行はパス、種類（タスクは `status` も）、`description`（無ければ見出し）。`--level` を付けると各ノードを `read` のその段で出す
 - `--all` はツリー全体の辺を出す（`--format` は `edges` か `dot`、既定は `edges`）。`--in`・`--out`・`--depth`・`--level` とは組めない
 - 例

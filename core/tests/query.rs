@@ -426,6 +426,30 @@ fn check_findings() {
     assert!(fs.iter().any(|f| f.in_project("old")));
 }
 
+/// 生の HTML のリンクも、切れたリンク・相対パスでないリンク・指されている assets/ に数える。
+#[test]
+fn check_html_links() {
+    let f = recipe_tree();
+    let p = "projects/recipe-app/";
+    f.write(
+        &format!("{p}artifacts/print-layout.md"),
+        "---\ntasks: [../tasks/2026-11-09-printable-menu.md]\n---\n\n# 印刷のレイアウト\n\n<img src=\"assets/print-sample.png\"> <a href=\"gone.md\">切れた</a> <a href=\"/tmp/x.md\">絶対</a>\n\n`<a href=\"code.md\">`\n",
+    );
+    let fs = Tree::load(&f.root).unwrap().check();
+    let got: Vec<(&str, usize, &str)> = fs
+        .iter()
+        .map(|f| (f.path.as_str(), f.line, f.problem.as_str()))
+        .collect();
+    let path = format!("{p}artifacts/print-layout.md");
+    assert_eq!(
+        got,
+        [
+            (path.as_str(), 7, "本文 のリンク gone.md の先が無い"),
+            (path.as_str(), 7, "本文 のリンク /tmp/x.md が相対パスでない"),
+        ]
+    );
+}
+
 #[test]
 fn check_needless_depends() {
     let f = Fixture::new();

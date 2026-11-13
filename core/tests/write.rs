@@ -434,6 +434,54 @@ fn mv_rename_and_promote() {
     assert!(err.to_string().contains("決まりの外"), "{err}");
 }
 
+/// 生の HTML の href・src・srcset も付け替える。文字参照を含む先は書き換えずに残す。
+#[test]
+fn mv_rewrites_html_links() {
+    let f = recipe_tree();
+    let p = "projects/recipe-app/";
+    f.write(&format!("{p}artifacts/assets/print-sample-2x.png"), "png");
+    f.write(
+        &format!("{p}wiki/meal-planner/overview.md"),
+        "---\ndescription: 献立プランナーの仕組み全体\n---\n\n# 献立プランナー\n\n<a href=\"../../artifacts/print-layout.md#節\">レイアウト</a>\n<a href=\"../../artifacts/print-layout.md?&amp;\">文字参照</a>\n",
+    );
+    f.write(
+        &format!("{p}artifacts/print-layout.md"),
+        "---\ntasks: [../tasks/2026-11-09-printable-menu.md]\n---\n\n# 印刷のレイアウト\n\n<picture>\n<source srcset=\"assets/print-sample.png 1x, assets/print-sample-2x.png 2x\">\n<img src=\"assets/print-sample.png\">\n</picture>\n",
+    );
+    let t = load(&f);
+    t.plan_mv(
+        &[&format!("{p}artifacts/print-layout.md")],
+        &format!("{p}artifacts/print-columns.md"),
+        &f.root,
+    )
+    .and_then(|plan| plan.apply(&t))
+    .unwrap();
+    let c = read(&f, &format!("{p}wiki/meal-planner/overview.md"));
+    assert!(
+        c.contains("<a href=\"../../artifacts/print-columns.md#節\">"),
+        "HTML の href を付け替えていない:\n{c}"
+    );
+    assert!(
+        c.contains("<a href=\"../../artifacts/print-layout.md?&amp;\">"),
+        "文字参照を含む先を書き換えた:\n{c}"
+    );
+
+    let t = load(&f);
+    t.plan_mv(
+        &[&format!("{p}artifacts/print-columns.md")],
+        &format!("{p}wiki/"),
+        &f.root,
+    )
+    .and_then(|plan| plan.apply(&t))
+    .unwrap();
+    let c = read(&f, &format!("{p}wiki/print-columns.md"));
+    assert!(
+        c.contains("<source srcset=\"../artifacts/assets/print-sample.png 1x, ../artifacts/assets/print-sample-2x.png 2x\">")
+            && c.contains("<img src=\"../artifacts/assets/print-sample.png\">"),
+        "HTML の src・srcset を付け替えていない:\n{c}"
+    );
+}
+
 // check --fix
 
 fn fix(f: &Fixture) -> Vec<String> {

@@ -12,6 +12,7 @@ publish = false
 write = []
 
 [dependencies]
+html5gum = "0.9.1"
 # 日付を読むだけなので、タイムゾーンの機能は CLI に任せる
 jiff = { version = "0.2.43", default-features = false, features = ["std"] }
 percent-encoding = "2.3.2"
