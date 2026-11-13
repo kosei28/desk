@@ -14,7 +14,7 @@ description: あらゆる作業ドキュメント（タスクと依存、調査�
 ## このスキルについて
 
 - **ツリーの決まりの正本はこのスキル。** ツリーに触るエージェントは必ず全部読む。形（置き場所・名前・frontmatter・節・リンク）も、書き方も、手順もここにある
-- **CLI `desk` は、同じ形を実装した補助ツール。** あれば使い、無ければこのスキルの形で手でやる。`desk check --rules` は CLI が実装している形の一覧で、このスキルと食い違えばこのスキルが正しい
+- **CLI `desk` は、同じ形を実装した補助ツール。** あれば使い、無ければこのスキルの形で手でやる。`desk rules` は CLI が実装している形の一覧で、このスキルと食い違えばこのスキルが正しい
 - **README.md（ルートとプロジェクト）は概要。** 決まりの根拠にしない
 - **決まりの理由は `docs/` にある。** このスキルと同じリポジトリの `tree.md`・`operation.md`・`cli.md`。書いていないケースに出会ったら、1 節の原則に戻って判断する
 
@@ -517,11 +517,11 @@ knowledge: []            # 必須。蒸留してできた・足したナレッ�
 - **プロジェクトを作る**: `desk new project <名前>`
 - **タスクを作る**: `desk new task <slug> --project <p>`。子は `--parent <タスク>`（プロジェクトは親から決まる）、人が要るタスクは `--needs-human`、見出しは `--title`。日付付きの slug を渡すと、その日付で作る
 - **文書などを作る**: `desk new artifact <slug> --parent <タスク>`、`desk new knowledge <slug> [--project <p>]`、`desk new material <slug> --project <p>` など
-- **一覧**: `desk ls task --where status=inprogress --fields name,status,now,modified`、`desk ls task --where needs_human=true --where status~todo,inprogress`、`desk ls material --where knowledge=[]`、`desk ls inbox`
+- **一覧**: `desk ls task --where status=inprogress --fields name,status,now,modified`、`desk ls task --where needs_human=true --where status~todo,inprogress`、`desk ls material --where knowledge=[]`、`desk ls inbox`、`desk ls task --modified-after 2026-11-01`（最終コミットの日。日付か日数）
 - **段 0**: `desk ls principle --project <p> --level 1`、`desk ls knowledge --project <p> --level 0`
-- **読む**: `desk read <パス>`（全体）、`--level 0`（概要）、`--level 2`（指す先まで）、`--outline`、`--section 目的,いま,決まり`
+- **読む**: `desk read <パス>...`（全体）、`--level 0`（概要）、`--level 2`（指す先まで）、`--outline`、`--section 目的,いま,決まり`。`desk ls ... --paths | desk read - --level 0` のように `-` で標準入力のパスを読む
 - **関係をたどる**: `desk graph <パス> --in`（指されているもの）、`--out`（指しているもの）、`--via parent,depends_on,tasks,principle,sources,body`、`--depth all`、`--format tree|paths|dot`
-- **形を確かめる**: `desk check`、`desk check --name <タスク>`、`desk check --fix`、`desk check --rules`
+- **形を確かめる**: `desk check`、`desk check --name <タスク>`、`desk check --fix`。CLI が実装している形の一覧は `desk rules`
 - **動かす**: `desk archive <タスク> <文書>... [--status dropped] [--dry-run]`、`desk archive --project <p>`、`desk mv <元>... <先>`
 
-`--where` の演算子は `=`・`!=`・`~`（含む。配列は要素のどれか、`~a,b` はどれか）・`<`・`>`。パスの値は名前だけでも当たる。`--project <p>` の原則とナレッジには、ルートのものも入る。
+`--where` の演算子は `=`・`!=`・`~`（含む。配列は要素のどれか、`~a,b` はどれか）・`<`・`>`。パスの値は名前だけでも当たる。`--project <p>` の原則とナレッジには、ルートのものも入る。`--via`・`--fields`・`--section` と `ls` の種類は、カンマ区切りでも繰り返しでも書ける。終了コードは 0 が成功、1 が失敗か `check` で見つけたとき、2 が引数の誤り（使い方は `desk <コマンド> -h`）。
