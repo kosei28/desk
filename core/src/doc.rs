@@ -140,7 +140,11 @@ impl Doc {
         self.has_fm = true;
         self.fm_end = end;
         self.body_start = end + 1;
-        let text = self.lines[1..end].join("\n");
+        // 閉じる --- の前の改行も YAML のうち（最後の | や > の値は改行で終わる）
+        let text: String = self.lines[1..end]
+            .iter()
+            .map(|l| format!("{l}\n"))
+            .collect();
         let fm = match frontmatter::parse(&text) {
             Ok(fm) => fm,
             Err(e) => {
