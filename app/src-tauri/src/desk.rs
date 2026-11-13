@@ -69,6 +69,14 @@ impl Index {
     pub fn load(root: &Path) -> Result<Index, String> {
         Tree::load(root).map(Index).map_err(|e| e.to_string())
     }
+
+    /// 索引にある .md の本文（frontmatter を外したもの）。索引に無いパスや .md でないものはエラー。
+    fn body(&self, path: &str) -> Result<String, String> {
+        match self.0.get(path) {
+            Some(doc) if doc.is_md => Ok(doc.lines[doc.body_start..].join("\n")),
+            _ => Err(format!("{path} は索引にある Markdown のファイルではない")),
+        }
+    }
 }
 
 impl Serialize for Index {
@@ -84,6 +92,14 @@ impl Serialize for Index {
 #[tauri::command(async)]
 pub fn index(desk: State<'_, Desk>) -> Result<Option<Index>, String> {
     desk.root().map(|root| Index::load(&root)).transpose()
+}
+
+/// 開いているツリーの、ルートからのパスの Markdown の本文（frontmatter を外したもの）。
+/// 読むのは索引にある .md だけ。
+#[tauri::command(async)]
+pub fn body(desk: State<'_, Desk>, path: String) -> Result<String, String> {
+    let root = desk.root().ok_or("ツリーを開いていない")?;
+    Index::load(&root)?.body(&path)
 }
 
 /// フォルダーを選ぶ窓を出し、選んだフォルダーのあるツリーを開いて覚える。選ばずに閉じたら何もしない。
@@ -111,15 +127,62 @@ mod tests {
 
     use super::*;
 
+    fn write(root: &Path, rel: &str, content: &str) {
+        let p = root.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, content).unwrap();
+    }
+
+    #[test]
+    fn body_strips_frontmatter_and_reads_only_markdown_in_the_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("desk");
+        write(&root, ".desk", "");
+        write(&root, ".git/notes.md", "# git\n");
+        write(dir.path(), "outside.md", "# 外\n");
+        write(&root, "README.md", "# desk\n\n架空のツリー。\n");
+        write(
+            &root,
+            "projects/misc/tasks/2026-01-02-tidy.md",
+            "---\r\nstatus: todo\r\n---\r\n\r\n# 片付ける\r\n",
+        );
+        write(&root, "projects/misc/artifacts/assets/note.md", "# 静的\n");
+        write(&root, "projects/misc/artifacts/assets/photo.png", "");
+        let index = Index::load(&root).unwrap();
+
+        assert_eq!(
+            index.body("README.md").unwrap(),
+            "# desk\n\n架空のツリー。\n"
+        );
+        assert_eq!(
+            index
+                .body("projects/misc/tasks/2026-01-02-tidy.md")
+                .unwrap(),
+            "\n# 片付ける\n"
+        );
+        for path in [
+            "../outside.md",
+            "projects/misc/tasks/../../../README.md",
+            ".git/notes.md",
+            "projects/misc/artifacts/assets/note.md",
+            "projects/misc/artifacts/assets/photo.png",
+            "projects/misc",
+            "missing.md",
+            "/etc/hosts",
+        ] {
+            let err = index.body(path).unwrap_err();
+            assert!(
+                err.contains("索引にある Markdown のファイルではない"),
+                "{path}: {err}"
+            );
+        }
+    }
+
     #[test]
     fn index_serializes_root_and_docs_in_path_order() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("desk");
-        let write = |rel: &str, content: &str| {
-            let p = root.join(rel);
-            fs::create_dir_all(p.parent().unwrap()).unwrap();
-            fs::write(p, content).unwrap();
-        };
+        let write = |rel: &str, content: &str| write(&root, rel, content);
         write(".desk", "");
         write(".git/HEAD", "ref: refs/heads/main\n");
         write("README.md", "# desk\n");

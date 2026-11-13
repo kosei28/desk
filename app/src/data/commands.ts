@@ -12,3 +12,6 @@ export const chooseRoot = () => invoke<void>("choose_root")
 
 /** ツリーが変わる（変更が落ち着く）たびに handler を呼ぶ */
 export const onTreeChanged = (handler: () => void): Promise<UnlistenFn> => listen("tree-changed", handler)
+
+/** 開いているツリーの、ルートからのパスの Markdown の本文（frontmatter を外したもの）。索引にある .md だけを読める */
+export const getBody = (path: string) => invoke<string>("body", { path })
