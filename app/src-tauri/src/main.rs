@@ -23,6 +23,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             titlebar::titlebar_double_click,
             desk::index,
+            desk::body,
             desk::choose_root
         ])
         .run(tauri::generate_context!())
