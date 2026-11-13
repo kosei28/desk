@@ -2,10 +2,11 @@
 
 use std::sync::LazyLock;
 
+use percent_encoding::{AsciiSet, CONTROLS, percent_decode_str, utf8_percent_encode};
 use regex::Regex;
+use relative_path::RelativePath;
 use serde::Serialize;
-
-use crate::path::{dir, join};
+use url::Url;
 
 /// リンクの形。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
@@ -57,7 +58,7 @@ pub fn resolve(from: &str, l: &mut Link) {
         l.form = LinkForm::Anchor;
     } else if raw.starts_with("file:") {
         l.form = LinkForm::Absolute;
-        l.target = file_url_path(p).unwrap_or_default();
+        l.target = file_url_path(raw).unwrap_or_default();
     } else if SCHEME_RE.is_match(raw) {
         l.form = LinkForm::External;
     } else if raw.starts_with('/') {
@@ -68,49 +69,46 @@ pub fn resolve(from: &str, l: &mut Link) {
         l.target = unescape(p);
     } else {
         l.form = LinkForm::Relative;
-        l.target = join(&[&dir(from), &unescape(p)]);
+        l.target = target(from, p);
     }
 }
 
-/// `file:` の URL のパス（Go の url.Parse の Path）。読めなければ None。
+/// from（ルートからのパス）に書いた相対パスのリンクの先を、ルートからのパスにする（外なら ../ 始まり）。
+pub fn target(from: &str, rel: &str) -> String {
+    dir_of(from).join_normalized(unescape(rel)).into_string()
+}
+
+/// ファイル（ルートからのパス）のあるディレクトリ。ルートのファイルなら空。
+fn dir_of(path: &str) -> &RelativePath {
+    let p = RelativePath::new(path);
+    p.parent().unwrap_or(p)
+}
+
+/// from（ルートからのパス）に書く、to（ルートからのパス）へのリンクの文字。
+pub fn link_text(from: &str, to: &str, anchor: &str) -> String {
+    let rel = dir_of(from).relative(to);
+    let s = utf8_percent_encode(rel.as_str(), LINK_ESCAPE).to_string();
+    if anchor.is_empty() {
+        s
+    } else {
+        format!("{s}#{anchor}")
+    }
+}
+
+/// リンクに書くときにエスケープする文字。空白はリンクを切り、% と # は読むときに別の意味になる。
+const LINK_ESCAPE: &AsciiSet = &CONTROLS.add(b' ').add(b'%').add(b'#');
+
+/// `file:` の URL のパス。読めなければ None。
 fn file_url_path(u: &str) -> Option<String> {
-    let rest = &u["file:".len()..];
-    let rest = rest.split_once('?').map_or(rest, |(p, _)| p);
-    let path = match rest.strip_prefix("//") {
-        Some(r) => r.find('/').map_or("", |i| &r[i..]),
-        None if rest.starts_with('/') => rest,
-        // file:a.md のような不透明な形にはパスが無い
-        None => "",
-    };
-    percent_decode(path)
+    let path = Url::parse(u).ok()?.to_file_path().ok()?;
+    path.to_str().map(str::to_string)
 }
 
-/// %XX を戻す（Go の url.PathUnescape）。戻せなければそのまま。
+/// %XX を戻す。UTF-8 にならなければそのまま。
 pub fn unescape(p: &str) -> String {
-    percent_decode(p).unwrap_or_else(|| p.to_string())
-}
-
-fn percent_decode(p: &str) -> Option<String> {
-    if !p.contains('%') {
-        return Some(p.to_string());
-    }
-    let b = p.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' {
-            let hex = |c: u8| (c as char).to_digit(16);
-            let hi = hex(*b.get(i + 1)?)?;
-            let lo = hex(*b.get(i + 2)?)?;
-            out.push((hi * 16 + lo) as u8);
-            i += 3;
-        } else {
-            out.push(b[i]);
-            i += 1;
-        }
-    }
-    // Go は UTF-8 でないバイト列もそのまま持つが、ここでは戻さずに元の文字列を使う
-    String::from_utf8(out).ok()
+    percent_decode_str(p)
+        .decode_utf8()
+        .map_or_else(|_| p.to_string(), |s| s.into_owned())
 }
 
 #[cfg(test)]
@@ -142,13 +140,47 @@ mod tests {
             (l.form, l.target.as_str()),
             (LinkForm::Absolute, "/Users/a/b c.md")
         );
-        assert_eq!(link(from, "file:a.md").target, "");
+        // file: の URL のパスは url に任せる（ホストの無い file:a.md も /a.md と読む）
+        assert_eq!(link(from, "file:a.md").target, "/a.md");
         assert_eq!(link(from, "/abs/x.md").target, "/abs/x.md");
         assert_eq!(link(from, "~/x.md").form, LinkForm::Home);
         assert_eq!(link(from, "../../../../x.md").target, "../x.md");
         assert_eq!(link(from, "bad%zz.md").target, "projects/a/tasks/bad%zz.md");
         assert_eq!(
+            link(from, "b%20c%zz.md").target,
+            "projects/a/tasks/b c%zz.md"
+        );
+        assert_eq!(
             link("README.md", "projects/a/README.md").target,
+            "projects/a/README.md"
+        );
+    }
+
+    /// 書くリンクは、読むと元の先に戻る。
+    #[test]
+    fn link_text_round_trips() {
+        let from = "projects/a/tasks/x.md";
+        for (to, anchor, want) in [
+            (
+                "projects/a/artifacts/b c.md",
+                "節",
+                "../artifacts/b%20c.md#節",
+            ),
+            ("projects/a/tasks/y.md", "", "y.md"),
+            (
+                "projects/a/artifacts/assets/50%#1.png",
+                "",
+                "../artifacts/assets/50%25%231.png",
+            ),
+            ("README.md", "", "../../../README.md"),
+        ] {
+            let text = link_text(from, to, anchor);
+            assert_eq!(text, want);
+            let l = link(from, &text);
+            assert_eq!((l.target.as_str(), l.anchor.as_str()), (to, anchor));
+        }
+        assert_eq!(
+            link_text("README.md", "projects/a/README.md", ""),
             "projects/a/README.md"
         );
     }

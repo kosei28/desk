@@ -1,7 +1,9 @@
 //! 引く: `desk ls` の条件で絞る。
 
+use relative_path::RelativePath;
+
 use crate::doc::one_line;
-use crate::path::{base, clean, dir, join};
+use crate::link;
 use crate::rules::{Kind, link_keys};
 use crate::tree::{Entry, Tree};
 
@@ -51,10 +53,7 @@ impl std::fmt::Display for WhereError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             WhereError::NoKey(s) => {
-                write!(
-                    f,
-                    "--where {s:?}: キーが無い（例: status=inprogress）"
-                )
+                write!(f, "--where {s:?}: キーが無い（例: status=inprogress）")
             }
             WhereError::NoOp(s) => write!(f, "--where {s:?}: 演算子は = != ~ < >"),
         }
@@ -115,12 +114,12 @@ fn value_matches(e: &Entry<'_>, key: &str, v: &str, val: &str) -> bool {
         return true;
     }
     let p = v.split_once('#').map_or(v, |(p, _)| p);
-    let b = base(p);
+    let b = RelativePath::new(p).file_name().unwrap_or(p);
     if p == val || b == val || b.strip_suffix(".md").unwrap_or(b) == val {
         return true;
     }
     if link_keys(e.info.kind).contains(&key) && !p.starts_with('/') && !p.starts_with('~') {
-        let r = clean(&join(&[&dir(&e.info.path), p]));
+        let r = link::target(&e.info.path, p);
         if r == val || r == val.strip_suffix('/').unwrap_or(val) {
             return true;
         }

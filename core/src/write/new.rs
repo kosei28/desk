@@ -6,9 +6,11 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
+use relative_path::RelativePath;
 
 use super::Error;
-use crate::path::{base, dir, project_dir, rel_path, split_dated};
+use crate::link::link_text;
+use crate::path::{project_dir, split_dated};
 use crate::rules::{ARCHIVE_DIR, HUMAN_TASK_SECTIONS, Kind, rule_of};
 use crate::tree::Tree;
 
@@ -169,9 +171,10 @@ impl Tree {
             }
         }
 
-        let heading = non_empty(req.title).unwrap_or_else(|| base(&slug));
+        let heading = non_empty(req.title)
+            .unwrap_or_else(|| RelativePath::new(&slug).file_name().unwrap_or(&slug));
         let mut sections = rule.sections;
-        let parent_link = parent_doc.map(|d| rel_path(&dir(&rel), &d.info.path));
+        let parent_link = parent_doc.map(|d| link_text(&rel, &d.info.path, ""));
         let fm: Option<Vec<String>> = match kind {
             Kind::Task => {
                 let mut fm = vec![
