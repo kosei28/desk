@@ -12,9 +12,12 @@ publish = false
 write = []
 
 [dependencies]
+percent-encoding = "2.3.2"
 regex = "1.13.1"
+relative-path = "2.0.3"
 saphyr-parser = "0.3.4"
 serde = { version = "1.0.229", features = ["derive"] }
+url = "2.5.8"
 
 [dev-dependencies]
 tempfile = "3.27.0"

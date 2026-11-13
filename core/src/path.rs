@@ -3,6 +3,7 @@
 use std::sync::LazyLock;
 
 use regex::Regex;
+use relative_path::RelativePath;
 use serde::Serialize;
 
 use crate::rules::{ARCHIVE_DIR, Kind, KindRule, PROJECTS_DIR, rule_by_dir, rule_of};
@@ -32,7 +33,9 @@ static DATED_NAME: LazyLock<Regex> =
 impl Info {
     /// ファイル名。
     pub fn name(&self) -> &str {
-        base(&self.path)
+        RelativePath::new(&self.path)
+            .file_name()
+            .unwrap_or_default()
     }
 
     /// そのファイルがあるプロジェクトのディレクトリ（projects/<p>、archive に移ったものは
@@ -277,134 +280,9 @@ pub fn unarchive_path(info: &Info) -> String {
     }
 }
 
-// Go の path パッケージと同じ、/ 区切りのパスの字面の操作。
-
-/// 最後の要素（Go の path.Base）。
-pub fn base(p: &str) -> &str {
-    if p.is_empty() {
-        return ".";
-    }
-    let t = p.trim_end_matches('/');
-    if t.is_empty() {
-        return "/";
-    }
-    match t.rfind('/') {
-        Some(i) => &t[i + 1..],
-        None => t,
-    }
-}
-
-/// 最後の要素を除いたもの（Go の path.Dir）。
-pub fn dir(p: &str) -> String {
-    let d = match p.rfind('/') {
-        Some(i) => &p[..=i],
-        None => "",
-    };
-    clean(d)
-}
-
-/// 要素をつないで整える（Go の path.Join）。空の要素は飛ばし、全部空なら空。
-pub fn join(elems: &[&str]) -> String {
-    let parts: Vec<&str> = elems.iter().copied().filter(|e| !e.is_empty()).collect();
-    if parts.is_empty() {
-        return String::new();
-    }
-    clean(&parts.join("/"))
-}
-
-/// 字面だけで整える（Go の path.Clean）。
-pub fn clean(p: &str) -> String {
-    if p.is_empty() {
-        return ".".to_string();
-    }
-    let rooted = p.starts_with('/');
-    let mut out: Vec<&str> = Vec::new();
-    for e in p.split('/') {
-        match e {
-            "" | "." => {}
-            ".." => {
-                if out.last().is_some_and(|l| *l != "..") {
-                    out.pop();
-                } else if !rooted {
-                    out.push("..");
-                }
-            }
-            _ => out.push(e),
-        }
-    }
-    let joined = out.join("/");
-    match (rooted, joined.is_empty()) {
-        (true, _) => format!("/{joined}"),
-        (false, true) => ".".to_string(),
-        (false, false) => joined,
-    }
-}
-
-/// from_dir から to への相対パス（どちらもルートからのパス。Go の filepath.Rel）。
-pub fn rel_path(from_dir: &str, to: &str) -> String {
-    let parts = |p: &str| -> Vec<String> {
-        let c = clean(p);
-        if c == "." {
-            Vec::new()
-        } else {
-            c.split('/').map(str::to_string).collect()
-        }
-    };
-    let (from, to) = (parts(from_dir), parts(to));
-    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
-    let mut out: Vec<&str> = vec![".."; from.len() - common];
-    out.extend(to[common..].iter().map(String::as_str));
-    if out.is_empty() {
-        ".".to_string()
-    } else {
-        out.join("/")
-    }
-}
-
-/// リンクに書く文字（空白はエスケープし、アンカーを付ける）。
-pub fn link_text(rel: &str, anchor: &str) -> String {
-    let s = rel.replace(' ', "%20");
-    if anchor.is_empty() {
-        s
-    } else {
-        format!("{s}#{anchor}")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn clean_like_go() {
-        for (input, want) in [
-            ("", "."),
-            ("a/b/../c", "a/c"),
-            ("../a/./b/", "../a/b"),
-            ("a/../..", ".."),
-            ("/../a", "/a"),
-            ("//a//b", "/a/b"),
-            ("a/b/../../..", ".."),
-        ] {
-            assert_eq!(clean(input), want, "clean({input:?})");
-        }
-        assert_eq!(dir("projects/a/tasks/x.md"), "projects/a/tasks");
-        assert_eq!(dir("x.md"), ".");
-        assert_eq!(
-            join(&["projects/a/tasks", "../artifacts/x.md"]),
-            "projects/a/artifacts/x.md"
-        );
-        assert_eq!(join(&[".", "x.md"]), "x.md");
-        assert_eq!(base("a/b.md"), "b.md");
-        assert_eq!(base("a/"), "a");
-        assert_eq!(
-            rel_path("projects/a/tasks", "projects/a/artifacts/x.md"),
-            "../artifacts/x.md"
-        );
-        assert_eq!(rel_path(".", "x.md"), "x.md");
-        assert_eq!(rel_path("a", "a"), ".");
-        assert_eq!(link_text("a b.md", "節"), "a%20b.md#節");
-    }
 
     #[test]
     fn dates() {

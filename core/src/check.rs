@@ -7,14 +7,12 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+use relative_path::RelativePath;
 use serde::{Serialize, Serializer};
 
 use crate::doc::Doc;
-use crate::link::LinkForm;
-use crate::path::{
-    archive_path, base, classify, dir, is_date, link_text, name_problem, rel_path, unarchive_path,
-    unique_scope,
-};
+use crate::link::{LinkForm, link_text};
+use crate::path::{archive_path, classify, is_date, name_problem, unarchive_path, unique_scope};
 use crate::rules::{
     ARCHIVE_DIR, HUMAN_TASK_SECTIONS, KeyRule, Kind, LOG_SECTION, PROJECTS_DIR, ROOT_RESERVED,
     TASK_SECTIONS, project_entries, rule_by_dir, rule_of,
@@ -345,7 +343,11 @@ impl Checker<'_> {
             let key = match d.info.kind {
                 None | Some(Kind::Wiki | Kind::Readme) => continue, // wiki/ は入れ子でパスが識別になる
                 Some(_) if d.info.asset => {
-                    format!("{}|{}", dir(&unarchive_path(&d.info)), d.info.name())
+                    let p = unarchive_path(&d.info);
+                    let dir = RelativePath::new(&p)
+                        .parent()
+                        .map_or("", RelativePath::as_str);
+                    format!("{dir}|{}", d.info.name())
                 }
                 Some(_) => format!(
                     "{}|{}",
@@ -547,9 +549,10 @@ impl Checker<'_> {
                         continue;
                     }
                     let problem = format!("{place} のリンク {} の先が無い", l.raw);
-                    let cands = self.t.find_by_name(base(&l.target));
+                    let name = RelativePath::new(&l.target).file_name().unwrap_or_default();
+                    let cands = self.t.find_by_name(name);
                     let f = if let ([cand], Some(start)) = (&cands[..], l.start) {
-                        let to = link_text(&rel_path(&dir(path), &cand.info.path), &l.anchor);
+                        let to = link_text(path, &cand.info.path, &l.anchor);
                         Finding::new(
                             path,
                             line,

@@ -4,12 +4,14 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+use relative_path::RelativePath;
+
 use super::{Error, git_run, git_tracked, remove_empty_tree, remove_if_empty};
 use crate::doc::Doc;
 use crate::edit::{Edit, apply_edits};
 use crate::frontmatter::Value;
-use crate::link::LinkForm;
-use crate::path::{archive_path, base, classify, dir, join, link_text, project_dir, rel_path};
+use crate::link::{LinkForm, link_text};
+use crate::path::{archive_path, classify, project_dir};
 use crate::rules::{ARCHIVE_DIR, Kind, PROJECTS_DIR};
 use crate::tree::{Tree, expand_home};
 
@@ -169,7 +171,7 @@ impl Tree {
                     continue;
                 }
                 let new_target = target_moved.unwrap_or(&l.target);
-                let new_raw = link_text(&rel_path(&dir(new_path), new_target), &l.anchor);
+                let new_raw = link_text(new_path, new_target, &l.anchor);
                 if new_raw == l.raw {
                     continue;
                 }
@@ -294,7 +296,9 @@ impl Tree {
         let dest_is_dir = dest_arg.ends_with('/')
             || dest == "."
             || self.abs(&dest).is_dir()
-            || !base(&dest).contains('.');
+            || !RelativePath::new(&dest)
+                .file_name()
+                .is_some_and(|n| n.contains('.'));
         let mut moves = Vec::new();
         if !dest_is_dir {
             match &paths[..] {
@@ -309,19 +313,24 @@ impl Tree {
                 if self.get(s).is_some() {
                     moves.push(Move {
                         from: s.clone(),
-                        to: join(&[&dest, base(s)]),
+                        to: RelativePath::new(&dest)
+                            .join_normalized(file_name(s))
+                            .into_string(),
                     });
                     continue;
                 }
                 // ディレクトリは中のファイルを全部
                 let prefix = format!("{s}/");
-                let b = base(s);
+                let b = file_name(s);
                 let before = moves.len();
                 moves.extend(self.docs().iter().filter_map(|d| {
                     let rest = d.info.path.strip_prefix(&prefix)?;
                     Some(Move {
                         from: d.info.path.clone(),
-                        to: join(&[&dest, b, rest]),
+                        to: RelativePath::new(&dest)
+                            .join(b)
+                            .join_normalized(rest)
+                            .into_string(),
                     })
                 }));
                 if moves.len() == before {
@@ -459,12 +468,12 @@ impl MovePlan {
             }
         }
         for m in &self.moves {
-            remove_empty_parents(tree, &dir(&m.from));
+            remove_empty_parents(tree, parent(&m.from));
         }
         for (d, parents) in &self.cleanup {
             remove_empty_tree(&tree.abs(d));
             if *parents {
-                remove_empty_parents(tree, &dir(d));
+                remove_empty_parents(tree, parent(d));
             }
         }
         Ok(res)
@@ -472,19 +481,25 @@ impl MovePlan {
 }
 
 /// 空になったディレクトリを消す（プロジェクトのディレクトリと、ルートの予約名のディレクトリは残す）。
-fn remove_empty_parents(tree: &Tree, start: &str) {
-    let mut d = start.to_string();
-    while d != "." && !d.is_empty() {
-        let parts: Vec<&str> = d.split('/').collect();
+fn remove_empty_parents(tree: &Tree, start: Option<&RelativePath>) {
+    for d in std::iter::successors(start, |d| d.parent()) {
+        let parts: Vec<&str> = d.iter().collect();
         if parts.len() < 2
             || (parts[0] == PROJECTS_DIR && parts.len() <= 2)
             || (parts[0] == ARCHIVE_DIR && parts.len() <= 3)
         {
             return;
         }
-        if !remove_if_empty(&tree.abs(&d)) {
+        if !remove_if_empty(&tree.abs(d.as_str())) {
             return;
         }
-        d = dir(&d);
     }
+}
+
+fn parent(p: &str) -> Option<&RelativePath> {
+    RelativePath::new(p).parent()
+}
+
+fn file_name(p: &str) -> &str {
+    RelativePath::new(p).file_name().unwrap_or_default()
 }

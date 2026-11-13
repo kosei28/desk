@@ -6,12 +6,13 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+use relative_path::RelativePath;
 use serde::{Serialize, Serializer};
 
 use crate::doc::Doc;
 use crate::frontmatter::SortedFrontmatter;
 use crate::link::LinkForm;
-use crate::path::{Info, base, classify, clean, project_dir};
+use crate::path::{Info, classify, project_dir};
 use crate::rules::{ARCHIVE_DIR, Kind, MARKER_FILE, PROJECTS_DIR};
 
 /// ツリーを読むときのエラー。
@@ -167,7 +168,7 @@ impl Tree {
         self.docs
             .iter()
             .filter(|d| {
-                let b = base(&d.info.path);
+                let b = d.info.name();
                 b == name || b.strip_suffix(".md") == Some(name)
             })
             .collect()
@@ -197,9 +198,9 @@ impl Tree {
         {
             return Ok(rel);
         }
-        let c = clean(&arg);
-        if self.exists(&c) && !c.starts_with("../") {
-            return Ok(c);
+        let c = RelativePath::new(&arg).normalize();
+        if self.exists(c.as_str()) && !c.starts_with("..") {
+            return Ok(c.into_string());
         }
         if arg.contains('/') {
             return Err(not_found());
