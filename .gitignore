@@ -3,3 +3,4 @@
 /app/node_modules/
 /app/dist/
 /app/styled-system/
+/app/src-tauri/gen/schemas/
