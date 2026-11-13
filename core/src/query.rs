@@ -127,9 +127,10 @@ fn value_matches(e: &Entry<'_>, key: &str, v: &str, val: &str) -> bool {
     false
 }
 
-/// 両方が数なら数で、ほかは文字列で比べる。
+/// 両方が数（有限の 10 進）なら数で、ほかは文字列で比べる。
 fn compare(a: &str, b: &str, op: Op) -> bool {
-    match (parse_float(a), parse_float(b)) {
+    let num = |s: &str| s.parse::<f64>().ok().filter(|x| x.is_finite());
+    match (num(a), num(b)) {
         (Some(x), Some(y)) if op == Op::Lt => x < y,
         (Some(x), Some(y)) => x > y,
         _ if op == Op::Lt => a < b,
@@ -137,23 +138,8 @@ fn compare(a: &str, b: &str, op: Op) -> bool {
     }
 }
 
-/// Go の strconv.ParseFloat が読めるもの（10 進の数、inf・nan）。
-fn parse_float(s: &str) -> Option<f64> {
-    // Rust は "infinity" や "+inf" も読むが、Go と同じく 10 進と inf・nan の綴りだけを数にする
-    let t = s.strip_prefix(['+', '-']).unwrap_or(s);
-    let word = matches!(t.to_ascii_lowercase().as_str(), "inf" | "infinity" | "nan");
-    if !word
-        && !t
-            .bytes()
-            .all(|c| c.is_ascii_digit() || matches!(c, b'.' | b'e' | b'E' | b'+' | b'-'))
-    {
-        return None;
-    }
-    s.parse().ok()
-}
-
 /// カンマで分け、空白を除き、空のものを捨てる。
-pub fn split_comma(s: &str) -> Vec<String> {
+fn split_comma(s: &str) -> Vec<String> {
     s.split(',')
         .map(str::trim)
         .filter(|p| !p.is_empty())
@@ -250,50 +236,6 @@ impl Tree {
     }
 }
 
-/// YYYY-MM-DD の n 日前。日付として読めなければ None。
-pub fn days_before(date: &str, n: u32) -> Option<String> {
-    if !crate::path::is_date(date) {
-        return None;
-    }
-    let y: i64 = date[0..4].parse().ok()?;
-    let m: i64 = date[5..7].parse().ok()?;
-    let d: i64 = date[8..10].parse().ok()?;
-    let (y, m, d) = civil_from_days(days_from_civil(y, m, d) - i64::from(n));
-    Some(format!("{y:04}-{m:02}-{d:02}"))
-}
-
-// 暦と通日の変換（H. Hinnant の days_from_civil・civil_from_days）。
-
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
-fn civil_from_days(z: i64) -> (i64, i64, i64) {
-    let z = z + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    (
-        if m <= 2 {
-            yoe + era * 400 + 1
-        } else {
-            yoe + era * 400
-        },
-        m,
-        d,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,14 +262,8 @@ mod tests {
         assert!(compare("b", "a", Op::Gt));
         assert!(compare("1e3", "999", Op::Gt));
         assert!(!compare("0x10", "9", Op::Gt));
-    }
-
-    #[test]
-    fn days() {
-        assert_eq!(days_before("2026-03-01", 1).as_deref(), Some("2026-02-28"));
-        assert_eq!(days_before("2024-03-01", 1).as_deref(), Some("2024-02-29"));
-        assert_eq!(days_before("2026-01-05", 10).as_deref(), Some("2025-12-26"));
-        assert_eq!(days_before("2026-11-14", 0).as_deref(), Some("2026-11-14"));
-        assert_eq!(days_before("x", 1), None);
+        // inf・nan は数にしない（文字列で比べる）
+        assert!(!compare("-inf", "-5", Op::Lt));
+        assert!(compare("nan", "5", Op::Gt));
     }
 }

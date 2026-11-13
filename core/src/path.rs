@@ -2,6 +2,7 @@
 
 use std::sync::LazyLock;
 
+use jiff::civil::Date;
 use regex::Regex;
 use relative_path::RelativePath;
 use serde::Serialize;
@@ -215,28 +216,8 @@ pub fn name_problem(info: &Info) -> Option<String> {
 
 /// YYYY-MM-DD が暦の上にある日か。
 pub fn is_date(s: &str) -> bool {
-    let b = s.as_bytes();
-    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
-        return false;
-    }
-    let num = |r: std::ops::Range<usize>| -> Option<u32> {
-        let p = &s[r];
-        p.bytes()
-            .all(|c| c.is_ascii_digit())
-            .then(|| p.parse().ok())?
-    };
-    let (Some(y), Some(m), Some(d)) = (num(0..4), num(5..7), num(8..10)) else {
-        return false;
-    };
-    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
-    let days = match m {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if leap => 29,
-        2 => 28,
-        _ => return false,
-    };
-    (1..=days).contains(&d)
+    // jiff は 20261114 のような ISO 8601 のほかの書き方も読むので、書き戻して同じかも見る
+    s.parse::<Date>().is_ok_and(|d| d.to_string() == s)
 }
 
 /// 名前が一意であるべき範囲の鍵（プロジェクトの archive/ の中と外は同じ範囲）。
@@ -291,5 +272,8 @@ mod tests {
         assert!(!is_date("2026-13-01"));
         assert!(!is_date("2026-00-10"));
         assert!(!is_date("2026-04-31"));
+        assert!(!is_date("20261114"));
+        assert!(!is_date("2026-11-14T10:00"));
+        assert!(!is_date("2026-1-14"));
     }
 }
