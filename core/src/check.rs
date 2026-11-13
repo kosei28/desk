@@ -660,12 +660,6 @@ impl Checker<'_> {
             .iter()
             .filter(|d| d.info.kind == Some(Kind::Task) && d.info.problem.is_none() && d.is_md)
             .collect();
-        let mut children: HashMap<&str, Vec<&Doc>> = HashMap::new();
-        for d in &tasks {
-            for p in link_targets(d, "parent") {
-                children.entry(p).or_default().push(d);
-            }
-        }
         for d in &tasks {
             let path = d.info.path.as_str();
             let st = d.status();
@@ -730,22 +724,6 @@ impl Checker<'_> {
             }
 
             // 子と親
-            if let Some(kids) = children.get(path) {
-                let all = kids.iter().all(|k| finished(&k.status()));
-                if st == "inprogress" && all {
-                    let paths = kids.iter().map(|k| k.info.path.clone()).collect();
-                    self.add(
-                        Finding::new(
-                            path,
-                            0,
-                            Category::Drift,
-                            "子タスクが全部終わっているのに inprogress".to_string(),
-                            "親を閉じるか、残りを手順に書く",
-                        )
-                        .related(paths),
-                    );
-                }
-            }
             for p in link_targets(d, "parent") {
                 let Some(pd) = t.get(p).filter(|pd| pd.info.path != path) else {
                     continue;

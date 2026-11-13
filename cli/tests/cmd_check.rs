@@ -66,12 +66,12 @@ fn findings_as_table_and_json() {
 fn narrowing_reaches_core() {
     let f = with_git(check_tree());
     let p = |s: &str| format!("projects/recipe-app/{s}");
-    let (fs, _) = check_json(&f.root, &["--name", "2026-11-08-child"]);
+    let (fs, _) = check_json(&f.root, &["--name", "2026-11-12-todo-parent"]);
     assert!(!fs.is_empty());
     for x in &fs {
         assert!(
-            x.path == p("tasks/2026-11-08-parent.md")
-                || x.path == p("archive/tasks/2026-11-08-child.md"),
+            x.path == p("tasks/2026-11-12-todo-parent.md")
+                || x.path == p("tasks/2026-11-12-started-child.md"),
             "--name で関係ないものが出る: {x:?}"
         );
     }

@@ -311,10 +311,6 @@ fn check_findings() {
             "depends_on の projects/recipe-app/tasks/2026-11-07-dep.md が todo なのに inprogress",
         ),
         (
-            format!("{p}tasks/2026-11-08-parent.md"),
-            "子タスクが全部終わっているのに inprogress",
-        ),
-        (
             format!("{p}tasks/2026-11-10-planned.md"),
             "todo なのに depends_on の projects/recipe-app/tasks/2026-11-10-someday.md が backlog",
         ),
@@ -408,13 +404,21 @@ fn check_findings() {
     assert!(!fixable("artifacts/links.md", "gone.md の先が無い"));
     assert!(!fixable("tasks/2026-11-01-bad-status.md", "status の値"));
 
-    // --name は関係するファイルの分も出す
-    let child = format!("{p}archive/tasks/2026-11-08-child.md");
+    // 子が全部終わっていても、親が inprogress なのはずれではない
     let parent = format!("{p}tasks/2026-11-08-parent.md");
-    let named: Vec<&Finding> = fs.iter().filter(|f| f.concerns(&child)).collect();
-    assert!(named.iter().any(|f| f.path == parent
+    let child = format!("{p}archive/tasks/2026-11-08-child.md");
+    assert!(
+        !fs.iter().any(|f| f.concerns(&parent) || f.concerns(&child)),
+        "子が全部終わった inprogress の親を挙げている"
+    );
+
+    // --name は関係するファイルの分も出す
+    let parent = format!("{p}tasks/2026-11-12-todo-parent.md");
+    let child = format!("{p}tasks/2026-11-12-started-child.md");
+    let named: Vec<&Finding> = fs.iter().filter(|f| f.concerns(&parent)).collect();
+    assert!(named.iter().any(|f| f.path == child
         && f.category == Category::Drift
-        && f.problem.contains("子タスクが全部終わっている")));
+        && f.problem.contains("が todo なのに inprogress")));
     assert!(named.iter().all(|f| f.path == parent || f.path == child));
 
     // --project はそのプロジェクトだけ
