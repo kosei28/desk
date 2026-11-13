@@ -56,7 +56,9 @@ export const tokens = defineTokens({
   },
   fonts: {
     text: { value: 'system-ui, "Hiragino Sans", sans-serif' },
-    display: { value: 'ui-rounded, "Zen Maru Gothic", system-ui, sans-serif' },
+    // Zen Maru Gothic は unicode-range で和文だけを持つ（index.css）。ui-rounded より前に置く。WebKit の ui-rounded は
+    // OS の書体の列ごと来て、和文をヒラギノ角ゴで拾うので、後ろに置くと和文が丸にならない
+    display: { value: '"Zen Maru Gothic", ui-rounded, system-ui, sans-serif' },
     mono: { value: 'ui-monospace, "SF Mono", Menlo, monospace' },
   },
   fontSizes: {
