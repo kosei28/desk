@@ -142,3 +142,133 @@ fn apply_edits() {
         "置換元が違うのに書き換えられてしまう"
     );
 }
+
+/// 本文だけの文書を読む。
+fn body(lines: &[&str]) -> Doc {
+    Doc::parse(classify("projects/app/knowledge/a.md"), &lines.join("\n"))
+}
+
+/// 本文のリンクの (先, 行, 行の中の位置)。
+fn links(d: &Doc) -> Vec<(&str, usize, Option<usize>)> {
+    d.links
+        .iter()
+        .map(|l| (l.raw.as_str(), l.line, l.start))
+        .collect()
+}
+
+/// 見出しの (段, 文字, 行)。
+fn headings(d: &Doc) -> Vec<(usize, &str, usize)> {
+    d.headings
+        .iter()
+        .map(|h| (h.level, h.text.as_str(), h.line))
+        .collect()
+}
+
+/// コードと HTML の中のものはリンクでも見出しでもない。
+#[test]
+fn code_and_html_are_not_markdown() {
+    let d = body(&[
+        "`[コード](a.md)` と `` [`二重`](b.md) ``",
+        "",
+        "````",
+        "```",
+        "[フェンスの中](c.md)",
+        "```",
+        "# フェンスの中",
+        "````",
+        "",
+        "    [字下げのコード](d.md)",
+        "",
+        "<!--",
+        "[コメント](e.md)",
+        "-->",
+        "",
+        "[外](f.md)",
+    ]);
+    assert_eq!(links(&d), [("f.md", 15, Some(6))]);
+    assert!(d.headings.is_empty(), "{:?}", d.headings);
+}
+
+/// 見出しは CommonMark の見出しのうち、引用・リストの外のもの。文字は書いてあるとおり。
+#[test]
+fn headings_follow_commonmark() {
+    let d = body(&[
+        "  # 字下げした見出し #",
+        "#見出しでない",
+        "",
+        "下線の見出し",
+        "===",
+        "",
+        "## `code` と <sha> と [リンク](a.md)",
+        "",
+        "> ## 引用の中",
+        "",
+        "- ## リストの中",
+        "",
+        "下線の",
+        "見出し 2",
+        "---",
+    ]);
+    assert_eq!(
+        headings(&d),
+        [
+            (1, "字下げした見出し", 0),
+            (1, "下線の見出し", 3),
+            (2, "`code` と <sha> と [リンク](a.md)", 6),
+            (2, "下線の 見出し 2", 12),
+        ]
+    );
+    assert_eq!(d.title(), "字下げした見出し");
+}
+
+/// リンクの形は CommonMark どおりに読む。書いてあるとおりの先なら、書き換えられる位置を持つ。
+#[test]
+fn links_follow_commonmark() {
+    let d = body(&[
+        "[入れ [子] の文字](a.md) [括弧](b(c).md) [空白](<d e.md> \"題\")",
+        "[行を",
+        "またぐ](f.md) \\[エスケープ](g.md) [エスケープした先](h\\_i.md)",
+        "<https://example.com/x> <me@example.com>",
+        "[参照][r] と [r] と [無い参照][none]",
+        "",
+        "[r]: r.md",
+        "[r]: 2 つ目の定義.md",
+        "段落の中の",
+        "[s]: 段落の続き.md",
+    ]);
+    assert_eq!(
+        links(&d),
+        [
+            ("a.md", 0, Some(25)),
+            ("b(c).md", 0, Some(40)),
+            ("d e.md", 0, Some(59)),
+            ("f.md", 2, Some(11)),
+            ("h_i.md", 2, None),
+            ("https://example.com/x", 3, Some(1)),
+            ("r.md", 6, Some(5)),
+        ]
+    );
+    let text: Vec<&str> = d.links.iter().map(|l| l.text.as_str()).collect();
+    assert_eq!(
+        text[..4],
+        ["入れ [子] の文字", "括弧", "空白", "行を またぐ"]
+    );
+}
+
+/// `[[名前]]` は Wiki の形として拾う（`|` の後ろは表示の文字）。
+#[test]
+fn wiki_links() {
+    let d = body(&["[[名前]] と [[先|表示]]"]);
+    let got: Vec<(&str, &str, LinkForm, Option<usize>)> = d
+        .links
+        .iter()
+        .map(|l| (l.raw.as_str(), l.target.as_str(), l.form, l.start))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("[[名前]]", "名前", LinkForm::Wiki, Some(0)),
+            ("[[先|表示]]", "先", LinkForm::Wiki, Some(15)),
+        ]
+    );
+}

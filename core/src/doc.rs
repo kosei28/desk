@@ -1,7 +1,9 @@
 //! ツリーの中のファイル 1 つ。.md なら中身（frontmatter・見出し・リンク）を読んだもの。
 
+use std::ops::Range;
 use std::sync::LazyLock;
 
+use pulldown_cmark::{Event, LinkType, Options, Parser, Tag, TagEnd};
 use regex::Regex;
 use serde::{Serialize, Serializer};
 
@@ -41,63 +43,9 @@ pub struct Doc {
     pub links: Vec<Link>,
 }
 
-/// Markdown（CommonMark）の空白。CommonMark の空白は ASCII のこれだけで、Rust の `\s` は Unicode の空白も含むので使わない。
-macro_rules! ws {
-    () => {
-        r"[\t\n\f\r ]"
-    };
-}
-
-static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(concat!(
-        r"^(#{1,6})",
-        ws!(),
-        r"+(.*?)",
-        ws!(),
-        r"*#*",
-        ws!(),
-        r"*$"
-    ))
-    .unwrap()
-});
-static MD_LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(concat!(
-        r"(!?)\[((?:[^\[\]]|\[[^\]]*\])*)\]\(",
-        ws!(),
-        r"*(<[^>]*>|[^)\t\n\f\r ]+)(?:",
-        ws!(),
-        r#"+(?:"[^"]*"|'[^']*'|\([^)]*\)))?"#,
-        ws!(),
-        r"*\)"
-    ))
-    .unwrap()
-});
-static REF_DEF_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(concat!(
-        r"^",
-        ws!(),
-        r"{0,3}\[[^\]]+\]:",
-        ws!(),
-        r"*(<[^>]*>|[^\t\n\f\r ]+)"
-    ))
-    .unwrap()
-});
-static WIKI_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]+)\]\]").unwrap());
-static INLINE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`+[^`]*`+").unwrap());
-static LIST_MARK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(concat!(
-        r"^",
-        ws!(),
-        r"*(?:[-*+]",
-        ws!(),
-        r"+(?:\[[ xX]\]",
-        ws!(),
-        r"+)?|[0-9]+\.",
-        ws!(),
-        r"+)"
-    ))
-    .unwrap()
-});
+/// 「いま」の行の頭のリストの印（`- `・`* `・`+ `・`1. `、チェックボックス）。
+static LIST_MARK: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(?:[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|[0-9]+\.[ \t]+)").unwrap());
 
 impl Doc {
     /// .md でないファイル（静的ファイルなど）。
@@ -187,82 +135,110 @@ impl Doc {
         s.find(&v.value)
     }
 
+    /// 本文を CommonMark として読み、見出しとリンクを拾う。
     fn parse_body(&mut self) {
-        let mut fence = "";
-        let mut body_links = Vec::new();
-        for i in self.body_start..self.lines.len() {
-            let line = &self.lines[i];
-            let trim = line.trim_start_matches(' ');
-            if !fence.is_empty() {
-                if trim.starts_with(fence) {
-                    fence = "";
+        let body = self.lines[self.body_start..].join("\n");
+        let starts: Vec<usize> = std::iter::once(0)
+            .chain(body.match_indices('\n').map(|(i, _)| i + 1))
+            .collect();
+        // 本文の中の位置 → (ファイルの行, 行の中の位置)
+        let pos = |off: usize| {
+            let i = starts.partition_point(|&s| s <= off) - 1;
+            (self.body_start + i, off - starts[i])
+        };
+        let parser = Parser::new_ext(&body, Options::ENABLE_WIKILINKS);
+        // 本文のリンクと、本文の中の位置（書いてある順に並べるため）
+        let mut body_links: Vec<(usize, Link)> = Vec::new();
+        // 参照の定義（書いてある順に）。同じ名前の定義は CommonMark どおり最初のものだけ
+        let mut defs: Vec<(Range<usize>, String)> = parser
+            .reference_definitions()
+            .iter()
+            .map(|(_, d)| (d.span.clone(), d.dest.to_string()))
+            .collect();
+        defs.sort_by_key(|(span, _)| span.start);
+        for (span, dest) in defs {
+            let Some(at) = dest_in(&body, span, "]:", &dest) else {
+                continue;
+            };
+            let (line, start) = pos(at);
+            let l = Link {
+                key: "body".to_string(),
+                raw: dest,
+                line,
+                start: Some(start),
+                ..Link::default()
+            };
+            body_links.push((at, l));
+        }
+        let mut headings = Vec::new();
+        // 読んでいる見出し（段、行、中身の範囲）
+        let mut heading: Option<(usize, usize, Option<Range<usize>>)> = None;
+        // 開いているリンクと、その文字の範囲（画像はリンクの中に入れ子になりうる）
+        let mut open: Vec<(usize, Link, Option<Range<usize>>)> = Vec::new();
+        // 入っている引用・リスト・脚注の数。見出しはこの外のものだけを文書の節にする
+        let mut nested = 0usize;
+        for (ev, r) in parser.into_offset_iter() {
+            match &ev {
+                Event::End(TagEnd::Heading(_)) => {
+                    if let Some((level, line, inner)) = heading.take() {
+                        headings.push(Heading {
+                            level,
+                            text: source_text(&body, inner),
+                            line,
+                            end: 0,
+                        });
+                    }
+                    continue;
                 }
-                continue;
-            }
-            if trim.starts_with("```") {
-                fence = "```";
-                continue;
-            }
-            if trim.starts_with("~~~") {
-                fence = "~~~";
-                continue;
-            }
-            if let Some(c) = HEADING_RE.captures(line) {
-                self.headings.push(Heading {
-                    level: c[1].len(),
-                    text: c[2].to_string(),
-                    line: i,
-                    end: 0,
-                });
-            }
-            let masked = INLINE_RE.replace_all(line, |c: &regex::Captures| " ".repeat(c[0].len()));
-            for c in MD_LINK_RE.captures_iter(&masked) {
-                let (Some(text), Some(url)) = (c.get(2), c.get(3)) else {
+                Event::End(TagEnd::Link | TagEnd::Image) => {
+                    if let Some((at, mut l, inner)) = open.pop()
+                        && !l.raw.is_empty()
+                    {
+                        l.text = source_text(&body, inner);
+                        body_links.push((at, l));
+                    }
                     continue;
-                };
-                let (Some(text), Some((raw, start))) =
-                    (line.get(text.range()), angle(line, url.range()))
-                else {
-                    continue;
-                };
-                body_links.push(Link {
-                    key: "body".to_string(),
-                    text: text.to_string(),
-                    raw,
-                    line: i,
-                    start: Some(start),
-                    ..Link::default()
-                });
+                }
+                _ => {}
             }
-            if let Some(url) = REF_DEF_RE.captures(&masked).and_then(|c| c.get(1))
-                && let Some((raw, start)) = angle(line, url.range())
-            {
-                body_links.push(Link {
-                    key: "body".to_string(),
-                    raw,
-                    line: i,
-                    start: Some(start),
-                    ..Link::default()
-                });
+            // 見出しとリンクの中身は、中のイベントの範囲を合わせたもの
+            if let Some((_, _, inner)) = &mut heading {
+                widen(inner, &r);
             }
-            for c in WIKI_RE.captures_iter(&masked) {
-                let (whole, name) = (c.get(0).unwrap(), c.get(1).unwrap());
-                let (Some(raw), Some(target)) = (line.get(whole.range()), line.get(name.range()))
-                else {
-                    continue;
-                };
-                body_links.push(Link {
-                    key: "body".to_string(),
-                    raw: raw.to_string(),
-                    line: i,
-                    start: Some(whole.start()),
-                    form: LinkForm::Wiki,
-                    target: target.to_string(),
-                    ..Link::default()
-                });
+            for (_, _, inner) in &mut open {
+                widen(inner, &r);
+            }
+            match ev {
+                Event::Start(Tag::Heading { level, .. }) if nested == 0 => {
+                    heading = Some((level as usize, pos(r.start).0, None));
+                }
+                Event::Start(Tag::BlockQuote(_) | Tag::List(_) | Tag::FootnoteDefinition(_)) => {
+                    nested += 1
+                }
+                Event::End(
+                    TagEnd::BlockQuote(_) | TagEnd::List(_) | TagEnd::FootnoteDefinition,
+                ) => nested -= 1,
+                Event::Start(
+                    Tag::Link {
+                        link_type,
+                        dest_url,
+                        ..
+                    }
+                    | Tag::Image {
+                        link_type,
+                        dest_url,
+                        ..
+                    },
+                ) => {
+                    let at = r.start;
+                    open.push((at, inline_link(&body, r, link_type, &dest_url, &pos), None));
+                }
+                _ => {}
             }
         }
-        self.links.extend(body_links);
+        body_links.sort_by_key(|(at, _)| *at);
+        self.headings = headings;
+        self.links.extend(body_links.into_iter().map(|(_, l)| l));
         let from = self.info.path.clone();
         for l in &mut self.links {
             if l.form != LinkForm::Wiki {
@@ -380,13 +356,69 @@ impl Doc {
     }
 }
 
-/// `<…>` で囲んだ先なら外し、書いてあるとおりの先と行の中の位置を返す。
-fn angle(line: &str, r: std::ops::Range<usize>) -> Option<(String, usize)> {
-    let raw = line.get(r.clone())?;
-    match raw.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
-        Some(inner) => Some((inner.to_string(), r.start + 1)),
-        None => Some((raw.to_string(), r.start)),
+/// 範囲を r まで広げる。
+fn widen(inner: &mut Option<Range<usize>>, r: &Range<usize>) {
+    *inner = Some(match inner.take() {
+        Some(i) => i.start.min(r.start)..i.end.max(r.end),
+        None => r.clone(),
+    });
+}
+
+/// 書いてあるとおりの文字（複数行なら行を空白でつなぐ）。
+fn source_text(body: &str, r: Option<Range<usize>>) -> String {
+    let s = r.and_then(|r| body.get(r)).unwrap_or_default();
+    s.lines().map(str::trim).collect::<Vec<_>>().join(" ")
+}
+
+/// 本文のリンク 1 つ（範囲 r はリンク全体）。拾わないもの（参照の形の使う側、メールの autolink）は raw が空。
+fn inline_link(
+    body: &str,
+    r: Range<usize>,
+    link_type: LinkType,
+    dest: &str,
+    pos: &impl Fn(usize) -> (usize, usize),
+) -> Link {
+    let mut l = Link {
+        key: "body".to_string(),
+        ..Link::default()
+    };
+    match link_type {
+        LinkType::Inline => {
+            l.raw = dest.to_string();
+            // 書いてあるとおりの先（エスケープなどが無い）なら、書き換えられるように位置を持つ
+            let at = dest_in(body, r.clone(), "](", dest);
+            let (line, start) = pos(at.unwrap_or(r.start));
+            l.line = line;
+            l.start = at.map(|_| start);
+        }
+        LinkType::Autolink => {
+            l.raw = dest.to_string();
+            (l.line, _) = pos(r.start);
+            l.start = Some(pos(r.start + 1).1);
+        }
+        LinkType::WikiLink { .. } => {
+            l.raw = body[r.clone()].to_string();
+            l.form = LinkForm::Wiki;
+            l.target = dest.to_string();
+            let (line, start) = pos(r.start);
+            (l.line, l.start) = (line, Some(start));
+        }
+        // 参照の形は定義の側で拾う（1 つの定義を何度使っても 1 本）
+        _ => {}
     }
+    l
+}
+
+/// 範囲 r の中で、印（`](` か `]:`）の後に書いてある先 dest の位置。書いてあるとおりでなければ None。
+fn dest_in(body: &str, r: Range<usize>, mark: &str, dest: &str) -> Option<usize> {
+    let s = body.get(r.clone())?;
+    s.rmatch_indices(mark).find_map(|(i, _)| {
+        let after = &s[i + mark.len()..];
+        let rest = after.trim_start_matches([' ', '\t', '\n']);
+        let rest = rest.strip_prefix('<').unwrap_or(rest);
+        rest.starts_with(dest)
+            .then(|| r.start + s.len() - rest.len())
+    })
 }
 
 /// 空白を 1 つにつめて 1 行にする。

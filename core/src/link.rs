@@ -34,7 +34,7 @@ pub struct Link {
     pub key: String,
     /// 本文のリンクの文字
     pub text: String,
-    /// 書いてあるとおりの先（アンカー込み）
+    /// 先（本文のものは CommonMark で読んだもの。アンカー込み）
     pub raw: String,
     /// ファイルの行（0 始まり）
     pub line: usize,
