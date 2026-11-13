@@ -1,8 +1,6 @@
 //! frontmatter。値は YAML として型を解かず、書いてあるとおりの文字列か文字列の配列として扱う。
 //! 書き換えは YAML を書き直さず行の置き換えでやるので、値ごとに行と位置を持つ。
 
-use std::collections::BTreeMap;
-
 use saphyr_parser::{Event, Parser, ScalarStyle, ScanError, Span};
 use serde::Serialize;
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
@@ -57,12 +55,13 @@ impl Frontmatter {
         self.fields.iter().map(|f| f.key.as_str())
     }
 
-    /// キーで並べた対応（同じキーが 2 度あれば後のもの）。`ls --json` の frontmatter の形。
-    pub fn sorted(&self) -> BTreeMap<&str, &Value> {
-        self.fields
-            .iter()
-            .map(|f| (f.key.as_str(), &f.value))
-            .collect()
+    /// 書いてあるとおりの順のキーと値。同じキーが 2 度あれば、get と同じく最初のものだけ。
+    pub fn entries(&self) -> impl Iterator<Item = (&str, &Value)> {
+        let fs = &self.fields;
+        fs.iter()
+            .enumerate()
+            .filter(|(i, f)| !fs[..*i].iter().any(|g| g.key == f.key))
+            .map(|(_, f)| (f.key.as_str(), &f.value))
     }
 }
 
@@ -86,14 +85,13 @@ struct FieldOut<'a> {
     value: &'a Value,
 }
 
-/// キーで並べた対応として出す（`ls --json` の frontmatter）。
-pub(crate) struct SortedFrontmatter<'a>(pub Option<&'a Frontmatter>);
+/// 書いてあるとおりの順の対応として出す（`ls --json` の frontmatter）。
+pub(crate) struct FrontmatterMap<'a>(pub Option<&'a Frontmatter>);
 
-impl Serialize for SortedFrontmatter<'_> {
+impl Serialize for FrontmatterMap<'_> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let sorted = self.0.map(Frontmatter::sorted).unwrap_or_default();
-        let mut m = s.serialize_map(Some(sorted.len()))?;
-        for (k, v) in sorted {
+        let mut m = s.serialize_map(None)?;
+        for (k, v) in self.0.into_iter().flat_map(Frontmatter::entries) {
             m.serialize_entry(k, v)?;
         }
         m.end()
@@ -350,7 +348,8 @@ mod tests {
     fn duplicate_keys() {
         let fm = parse("a: 1\na: 2\n").unwrap();
         assert_eq!(fm.get("a").unwrap().value, Value::Str("1".into()));
-        assert_eq!(fm.sorted()["a"], &Value::Str("2".into()));
+        let entries: Vec<_> = fm.entries().collect();
+        assert_eq!(entries, [("a", &Value::Str("1".into()))]);
         assert_eq!(fm.keys().collect::<Vec<_>>(), ["a", "a"]);
     }
 
