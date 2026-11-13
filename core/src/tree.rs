@@ -2,14 +2,16 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+use std::process::Command;
+use std::sync::OnceLock;
 
 use serde::{Serialize, Serializer};
 
 use crate::doc::Doc;
 use crate::frontmatter::SortedFrontmatter;
 use crate::link::LinkForm;
-use crate::path::{Info, classify, project_dir};
+use crate::path::{Info, base, classify, clean, project_dir};
 use crate::rules::{ARCHIVE_DIR, Kind, MARKER_FILE, PROJECTS_DIR};
 
 /// ツリーを読むときのエラー。
@@ -85,6 +87,8 @@ pub struct Tree {
     /// パス順
     docs: Vec<Doc>,
     by_path: HashMap<String, usize>,
+    /// パス → 最終コミットの日付（要るときに git から読む）
+    dates: OnceLock<HashMap<String, String>>,
 }
 
 impl Tree {
@@ -110,6 +114,7 @@ impl Tree {
             root: root.to_path_buf(),
             docs,
             by_path,
+            dates: OnceLock::new(),
         })
     }
 
@@ -131,6 +136,106 @@ impl Tree {
     /// ルートからのパスを絶対パスにする。
     pub fn abs(&self, rel: &str) -> PathBuf {
         self.root.join(rel)
+    }
+
+    /// ルートからのパス（ファイルかディレクトリ）があるか。
+    pub fn exists(&self, rel: &str) -> bool {
+        self.by_path.contains_key(rel) || rel == "." || self.abs(rel).exists()
+    }
+
+    /// 絶対パスをルートからのパスにする（字面だけで比べる）。ルートの外なら None。
+    pub fn rel(&self, abs: &Path) -> Option<String> {
+        let rest = clean_path(abs)
+            .strip_prefix(clean_path(&self.root))
+            .ok()?
+            .to_path_buf();
+        let parts: Vec<String> = rest
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        Some(if parts.is_empty() {
+            ".".to_string()
+        } else {
+            parts.join("/")
+        })
+    }
+
+    /// ファイル名（.md は省略できる）で引く。
+    pub fn find_by_name(&self, name: &str) -> Vec<&Doc> {
+        self.docs
+            .iter()
+            .filter(|d| {
+                let b = base(&d.info.path);
+                b == name || b.strip_suffix(".md") == Some(name)
+            })
+            .collect()
+    }
+
+    /// 引数（作業ディレクトリからのパス、ルートからのパス、名前）をルートからのパスにする。
+    /// 名前が複数に当たったら、作業ディレクトリのプロジェクトで絞る。
+    pub fn resolve(&self, arg: &str, cwd: &Path) -> Result<String, ResolveError> {
+        let arg = expand_home(arg);
+        let not_found = || ResolveError::NotFound { arg: arg.clone() };
+        let p = Path::new(&arg);
+        if p.is_absolute() {
+            let rel = self.rel(p).ok_or_else(|| ResolveError::Outside {
+                arg: arg.clone(),
+                root: self.root.clone(),
+            })?;
+            return if self.exists(&rel) {
+                Ok(rel)
+            } else {
+                Err(not_found())
+            };
+        }
+        let abs = cwd.join(p);
+        if let Some(rel) = self.rel(&abs)
+            && self.exists(&rel)
+            && abs.exists()
+        {
+            return Ok(rel);
+        }
+        let c = clean(&arg);
+        if self.exists(&c) && !c.starts_with("../") {
+            return Ok(c);
+        }
+        if arg.contains('/') {
+            return Err(not_found());
+        }
+        let found = self.find_by_name(&arg);
+        match found.len() {
+            0 => return Err(not_found()),
+            1 => return Ok(found[0].info.path.clone()),
+            _ => {}
+        }
+        if let Some(rel) = self.rel(cwd)
+            && rel != "."
+        {
+            let here = classify(&format!("{rel}/x"));
+            let inside: Vec<&&Doc> = found
+                .iter()
+                .filter(|d| {
+                    !d.info.project.is_empty()
+                        && d.info.project == here.project
+                        && d.info.project_archived == here.project_archived
+                })
+                .collect();
+            if let [d] = inside[..] {
+                return Ok(d.info.path.clone());
+            }
+        }
+        Err(ResolveError::Ambiguous {
+            name: arg.clone(),
+            candidates: found.iter().map(|d| d.info.path.clone()).collect(),
+        })
+    }
+
+    /// 最終コミットの日付（YYYY-MM-DD）。コミットされていない・git でなければ空。
+    pub fn modified(&self, rel: &str) -> &str {
+        self.dates
+            .get_or_init(|| git_dates(&self.root))
+            .get(rel)
+            .map_or("", String::as_str)
     }
 
     /// プロジェクト（archived なら archive/ に移ったものも）。
@@ -195,32 +300,146 @@ impl Tree {
         out
     }
 
-    /// 一覧に出るもの（`desk ls` の対象）。形の外のもの・README・静的ファイルは入れず、
-    /// プロジェクトを最後に足す（プロジェクトは README を見出しに使う）。
-    pub fn entries(&self, archived: bool) -> Vec<Entry<'_>> {
+    /// 一覧に出るもの（`desk ls` の対象）を種類とプロジェクトで絞る。kinds が空なら全部の種類。
+    /// 形の外のもの・README・静的ファイルは入れず、プロジェクトを最後に足す（プロジェクトは README を見出しに使う）。
+    /// project で絞っても、ルートの原則とナレッジは全プロジェクトに当てはまるので入れる。
+    pub fn entries(&self, kinds: &[Kind], project: Option<&str>, archived: bool) -> Vec<Entry<'_>> {
+        let want = |k: Kind| kinds.is_empty() || kinds.contains(&k);
         let mut out: Vec<Entry<'_>> = self
             .docs
             .iter()
             .filter(|d| {
+                let Some(k) = d.info.kind else { return false };
                 d.is_md
                     && d.info.problem.is_none()
-                    && d.info.kind.is_some_and(|k| k != Kind::Readme)
+                    && k != Kind::Readme
+                    && want(k)
                     && (archived || !d.info.archived)
+                    && project.is_none_or(|p| {
+                        d.info.project == p
+                            || d.info.project.is_empty()
+                                && matches!(k, Kind::Principle | Kind::Knowledge)
+                    })
             })
             .map(|d| Entry {
                 info: d.info.clone(),
                 doc: Some(d),
             })
             .collect();
-        for p in self.projects(archived) {
-            let readme = self.get(&format!("{}/README.md", p.path));
-            out.push(Entry {
-                info: p,
-                doc: readme,
-            });
+        if want(Kind::Project) {
+            for p in self.projects(archived) {
+                if project.is_some_and(|name| p.project != name) {
+                    continue;
+                }
+                let readme = self.get(&format!("{}/README.md", p.path));
+                out.push(Entry {
+                    info: p,
+                    doc: readme,
+                });
+            }
         }
         out
     }
+}
+
+/// 引数をルートからのパスにできないとき。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolveError {
+    /// ツリーの外の絶対パス
+    Outside {
+        arg: String,
+        root: PathBuf,
+    },
+    NotFound {
+        arg: String,
+    },
+    /// 名前が複数に当たった
+    Ambiguous {
+        name: String,
+        candidates: Vec<String>,
+    },
+}
+
+impl std::fmt::Display for ResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolveError::Outside { arg, root } => {
+                write!(f, "{arg} はツリー（{}）の外", root.display())
+            }
+            ResolveError::NotFound { arg } => write!(f, "{arg} が無い"),
+            ResolveError::Ambiguous { name, candidates } => write!(
+                f,
+                "{name} は複数ある。パスで指定する:\n  {}",
+                candidates.join("\n  ")
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ResolveError {}
+
+/// `~` と `~/…` をホームにする。
+fn expand_home(p: &str) -> String {
+    if (p == "~" || p.starts_with("~/"))
+        && let Some(home) = std::env::home_dir()
+    {
+        return home
+            .join(p[1..].trim_start_matches('/'))
+            .to_string_lossy()
+            .into_owned();
+    }
+    p.to_string()
+}
+
+/// 字面だけで整える（. と .. を解く）。
+fn clean_path(p: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// パス → 最終コミットの日付。git でなければ空。
+fn git_dates(root: &Path) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let Ok(o) = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args([
+            "-c",
+            "core.quotepath=false",
+            "log",
+            "--format=%x01%cs",
+            "--name-only",
+            "--no-renames",
+        ])
+        .output()
+    else {
+        return out;
+    };
+    if !o.status.success() {
+        return out;
+    }
+    let mut date = "";
+    let text = String::from_utf8_lossy(&o.stdout);
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        if let Some(d) = line.strip_prefix('\x01') {
+            date = d;
+            continue;
+        }
+        out.entry(line.to_string())
+            .or_insert_with(|| date.to_string());
+    }
+    out
 }
 
 fn walk(root: &Path, rel_dir: &str, docs: &mut Vec<Doc>) -> Result<(), Error> {
@@ -291,6 +510,15 @@ impl Entry<'_> {
 
     pub fn now(&self) -> String {
         self.doc.map(Doc::now).unwrap_or_default()
+    }
+
+    /// 最終コミットの日付（プロジェクトは README の）。
+    pub fn modified<'t>(&self, tree: &'t Tree) -> &'t str {
+        if self.info.kind == Some(Kind::Project) {
+            tree.modified(&format!("{}/README.md", self.info.path))
+        } else {
+            tree.modified(&self.info.path)
+        }
     }
 }
 

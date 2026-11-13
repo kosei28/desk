@@ -3,6 +3,9 @@
 // テストのファイルごとに使うものが違う
 #![allow(dead_code)]
 
+pub mod cli;
+pub mod go;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -329,6 +332,223 @@ pub fn exception_tree() -> Fixture {
     f.write(
         "projects/alpha/library/2026-11-01-typed.md",
         "---\ntags: [2026, true, null, 1.5, rust]\nmeta: {a: b}\nnested: [[a], b]\n---\n\n# 型の付いた値\n",
+    );
+    f
+}
+
+impl Fixture {
+    /// ルートを git のリポジトリにし（まだなら）、今の中身を全部その日付でコミットする。
+    pub fn commit_all(&self, date: &str) {
+        let git = |args: &[&str]| {
+            let st = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&self.root)
+                .args(["-c", "user.name=desk", "-c", "user.email=desk@example.com"])
+                .args(args)
+                .env("GIT_AUTHOR_DATE", format!("{date}T12:00:00"))
+                .env("GIT_COMMITTER_DATE", format!("{date}T12:00:00"))
+                .output()
+                .unwrap();
+            assert!(
+                st.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&st.stderr)
+            );
+        };
+        if !self.root.join(".git").exists() {
+            git(&["init", "-q"]);
+        }
+        git(&["add", "-A"]);
+        git(&["commit", "-q", "-m", date]);
+    }
+}
+
+/// check で挙がるものを集めたツリー（Go のテストの TestCheckFindings のツリーに、frontmatter の値の行を見るものを足した）。
+pub fn check_tree() -> Fixture {
+    let f = recipe_tree();
+    let p = "projects/recipe-app/";
+    let w = |rel: &str, c: &str| f.write(rel, c);
+    let pw = |rel: &str, c: &str| f.write(&format!("{p}{rel}"), c);
+    w("notes/todo.md", "# メモ\n");
+    pw("drafts/x.md", "# 下書き\n");
+    pw("tasks/no-date.md", &task_doc("todo", "", "日付なし"));
+    pw(
+        "tasks/2026-11-01-bad-status.md",
+        &task_doc("doing", "", "決まりの外の status"),
+    );
+    pw("tasks/2026-11-02-no-fm.md", "# frontmatter なし\n");
+    pw(
+        "tasks/2026-11-03-short.md",
+        "---\nstatus: todo\nneeds_human: false\n---\n\n# 節が足りない\n\n## ログ\n- a\n\n## 目的\nx\n",
+    );
+    pw(
+        "tasks/2026-11-04-closed.md",
+        &task_doc("done", "", "閉じたのに外"),
+    );
+    pw(
+        "archive/tasks/2026-11-05-reopened.md",
+        &task_doc("todo", "", "動いているのに中"),
+    );
+    pw(
+        "tasks/2026-11-06-started.md",
+        &task_doc(
+            "inprogress",
+            "depends_on: [2026-11-07-dep.md]",
+            "依存が終わる前に着手",
+        ),
+    );
+    pw(
+        "tasks/2026-11-07-dep.md",
+        &task_doc("todo", "", "終わっていない依存"),
+    );
+    pw(
+        "tasks/2026-11-08-parent.md",
+        &task_doc("inprogress", "", "親"),
+    );
+    pw(
+        "archive/tasks/2026-11-08-child.md",
+        &task_doc("done", "parent: ../../tasks/2026-11-08-parent.md", "子"),
+    );
+    pw(
+        "artifacts/links.md",
+        "---\ntasks: [../tasks/2026-11-08-parent.md]\n---\n\n[消えた](gone.md) [絶対](/tmp/x.md) [[名前]]\n[動いた](../overview.md#節) [二つ](../tasks/links.md) [家](~/x.md)\n",
+    );
+    pw("artifacts/assets/unused.png", "png");
+    pw(
+        "knowledge/no-principle.md",
+        "---\ndescription: x\n---\n# x\n",
+    );
+    pw(
+        "archive/artifacts/links.md",
+        "---\ntasks: []\n---\n# 同じ名前\n",
+    );
+    pw(
+        "tasks/2026-11-10-planned.md",
+        &task_doc(
+            "todo",
+            "depends_on: [2026-11-10-someday.md]",
+            "いつかに依存",
+        ),
+    );
+    pw(
+        "tasks/2026-11-10-someday.md",
+        &task_doc("backlog", "", "いつか"),
+    );
+    pw(
+        "tasks/2026-11-11-on-dropped.md",
+        &task_doc(
+            "todo",
+            "depends_on: [../archive/tasks/2026-11-11-dropped.md]",
+            "やめたものに依存",
+        ),
+    );
+    pw(
+        "archive/tasks/2026-11-11-dropped.md",
+        &task_doc("dropped", "", "やめた"),
+    );
+    pw(
+        "tasks/2026-11-12-todo-parent.md",
+        &task_doc("todo", "", "未着手の親"),
+    );
+    pw(
+        "tasks/2026-11-12-started-child.md",
+        &task_doc(
+            "inprogress",
+            "parent: 2026-11-12-todo-parent.md",
+            "着手した子",
+        ),
+    );
+    pw(
+        "tasks/2026-11-13-backlog-parent.md",
+        &task_doc("backlog", "", "いつかの親"),
+    );
+    pw(
+        "tasks/2026-11-13-todo-child.md",
+        &task_doc(
+            "todo",
+            "parent: 2026-11-13-backlog-parent.md",
+            "やると決めた子",
+        ),
+    );
+    pw(
+        "archive/tasks/2026-11-14-closed-parent.md",
+        &task_doc("done", "", "閉じた親"),
+    );
+    pw(
+        "tasks/2026-11-14-left-child.md",
+        &task_doc(
+            "todo",
+            "parent: ../archive/tasks/2026-11-14-closed-parent.md",
+            "残った子",
+        ),
+    );
+    pw(
+        "tasks/2026-11-15-self.md",
+        &task_doc("todo", "depends_on: [2026-11-15-self.md]", "自分に依存"),
+    );
+    pw(
+        "tasks/2026-11-16-a.md",
+        &task_doc("todo", "depends_on: [2026-11-16-b.md]", "循環 a"),
+    );
+    pw(
+        "tasks/2026-11-16-b.md",
+        &task_doc("todo", "depends_on: [2026-11-16-a.md]", "循環 b"),
+    );
+    pw(
+        "tasks/2026-11-17-a.md",
+        &task_doc("todo", "parent: 2026-11-17-b.md", "親の循環 a"),
+    );
+    pw(
+        "tasks/2026-11-17-b.md",
+        &task_doc("todo", "parent: 2026-11-17-a.md", "親の循環 b"),
+    );
+    pw(
+        "tasks/2026-11-18-no-needs-human.md",
+        "---\nstatus: todo\n---\n\n# needs_human が無い\n\n## 目的\nx\n\n## いま\nx\n\n## 成果物\nx\n\n## 現在地\nx\n\n## 決まり\nx\n\n## 手順\nx\n",
+    );
+    pw(
+        "tasks/2026-11-19-old-status.md",
+        &task_doc("active", "", "前の語彙"),
+    );
+    pw(
+        "tasks/2026-11-20-bad-needs-human.md",
+        &task_doc("todo", "needs_human: human", "決まりの外の needs_human"),
+    );
+    // frontmatter の値の行: 空の値はキーの行、ブロックの配列は最初の要素の行、引用符と印字できない文字
+    pw(
+        "tasks/2026-11-21-values.md",
+        &task_doc("\n  \"to\\u00a0do\"", "needs_human:", "値の行"),
+    );
+    pw(
+        "knowledge/bad-values.md",
+        "---\ndescription: \"\"\nprinciple:\n  - ../../../principles/prefer-structure-over-patches.md\n  - \"\"\nverified: 2026-13-01\nsources: []\n---\n\n# 値のおかしいナレッジ\n",
+    );
+    pw(
+        "knowledge/empty-list.md",
+        "---\ndescription: x\nprinciple: []\n---\n\n# 空の配列\n",
+    );
+    pw("archive/wiki/x.md", "# archive に置けないもの\n");
+    pw("wiki/assets/a.png", "png");
+    pw("wiki/assets/b.png", "png");
+    pw("artifacts/assets/a.png", "png");
+    pw(
+        "wiki/uses.md",
+        "---\ndescription: 画像\n---\n\n![](assets/a.png)\n",
+    );
+    w("archive/stray/x.md", "# 置けない\n");
+    w("archive/projects/old/README.md", "# 終わったプロジェクト\n");
+    w(
+        "archive/projects/old/tasks/2026-01-01-open.md",
+        &task_doc("todo", "", "閉じていない"),
+    );
+    w("archive/projects/old/scratch/x.md", "# 置けない\n");
+    pw(
+        "tasks/2026-11-22-closed.md",
+        &task_doc("done", "", "閉じた（archive に同じ名前）"),
+    );
+    pw(
+        "archive/tasks/2026-11-22-closed.md",
+        &task_doc("done", "", "閉じた（先にある）"),
     );
     f
 }
