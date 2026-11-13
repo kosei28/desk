@@ -474,7 +474,7 @@ impl Checker<'_> {
                 }
                 continue;
             };
-            // 値の行（1 始まり）。Go は YAML のノードの行（frontmatter の中で 1 始まり）をそのまま出し、1 行上を指していた
+            // 値の行（1 始まり）
             let line = field.line + 1;
             let vals = d.list(k.name);
             if k.non_empty && vals.concat().trim().is_empty() {

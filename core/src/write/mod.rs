@@ -59,7 +59,7 @@ impl From<std::io::Error> for Error {
     }
 }
 
-/// 作業ディレクトリからのパスを、字面で整えた絶対パスにする（Go の filepath.Abs）。
+/// 作業ディレクトリからのパスを、字面で整えた絶対パスにする（シンボリックリンクは解かない）。
 pub fn absolute(cwd: &Path, p: &str) -> PathBuf {
     clean_path(&cwd.join(p))
 }
