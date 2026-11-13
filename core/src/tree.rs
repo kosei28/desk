@@ -67,6 +67,8 @@ pub fn find_root(dir: &Path) -> Result<PathBuf, Error> {
 
 /// dir から上にたどって .desk のあるディレクトリを返す。
 pub fn find_marker(dir: &Path) -> Option<PathBuf> {
+    // 末尾の / や . を落としてからたどる（返すルートの表示を作業ディレクトリの書き方に左右させない）
+    let dir: PathBuf = dir.components().collect();
     dir.ancestors()
         .find(|d| d.join(MARKER_FILE).metadata().is_ok_and(|m| !m.is_dir()))
         .map(Path::to_path_buf)
@@ -379,7 +381,7 @@ impl std::fmt::Display for ResolveError {
 impl std::error::Error for ResolveError {}
 
 /// `~` と `~/…` をホームにする。
-fn expand_home(p: &str) -> String {
+pub(crate) fn expand_home(p: &str) -> String {
     if (p == "~" || p.starts_with("~/"))
         && let Some(home) = std::env::home_dir()
     {
@@ -392,7 +394,7 @@ fn expand_home(p: &str) -> String {
 }
 
 /// 字面だけで整える（. と .. を解く）。
-fn clean_path(p: &Path) -> PathBuf {
+pub(crate) fn clean_path(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for c in p.components() {
         match c {

@@ -16,6 +16,8 @@ pub mod quote;
 pub mod read;
 pub mod rules;
 pub mod tree;
+#[cfg(feature = "write")]
+pub mod write;
 
 pub use doc::{Doc, Heading};
 pub use frontmatter::{Frontmatter, Value};
