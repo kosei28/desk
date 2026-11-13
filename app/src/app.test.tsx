@@ -1,7 +1,10 @@
 import { render, screen } from "@solidjs/testing-library"
 import { createAgent } from "@ui-sdk/solid/agent"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { click } from "./test/input"
+
+const invoke = vi.hoisted(() => vi.fn(() => Promise.resolve()))
+vi.mock("@tauri-apps/api/core", () => ({ invoke }))
 
 import { App } from "./app"
 
@@ -10,8 +13,12 @@ const agent = createAgent()
 
 const sheet = () => screen.getByRole("article")
 const rowOf = (text: string) => screen.getByText(text).closest<HTMLElement>("[data-slot=tree-label]")!
+const mouse = (target: Element, type: "mousedown" | "mouseup", detail: number) =>
+  target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, detail, button: 0 }))
 
 describe("App", () => {
+  beforeEach(() => invoke.mockClear())
+
   it("はじめは紙に、ファイルを選ぶよう出す", () => {
     render(() => <App />)
     expect(sheet().textContent).toBe("ファイルを選ぶと、ここに開く")
@@ -30,6 +37,29 @@ describe("App", () => {
     await click(rowOf("projects"))
     expect(screen.getByText("recipe-app")).toBeTruthy()
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("作業机")
+  })
+
+  // 帯の高さの中で紙に覆われていない所がどこも帯に当たるかは、レイアウトの話で jsdom では見られない。ここでは、
+  // 窓を動かすのが帯の層だけで、紙・ツリーの行・紙の列の入れ物（帯より下の右と下の余白）では動かないことを見る
+  it("帯の層を押すと窓を動かし、ダブルクリックでタイトルバーのアクションを送る。紙・ツリーの行・帯より下の余白では何もしない", async () => {
+    render(() => <App />)
+    const band = screen.getByRole("navigation", { name: "ツリー" }).previousElementSibling!
+    const margin = sheet().parentElement!
+    const doubleClick = (target: Element) => {
+      mouse(target, "mousedown", 1)
+      mouse(target, "mouseup", 1)
+      mouse(target, "mousedown", 2)
+      mouse(target, "mouseup", 2)
+    }
+
+    const row = rowOf("作業机")
+    await click(row)
+    for (const target of [sheet(), row, margin]) doubleClick(target)
+    expect(invoke).not.toHaveBeenCalled()
+
+    expect(band.parentElement).toBe(margin.parentElement)
+    doubleClick(band)
+    expect(invoke.mock.calls).toEqual([["plugin:window|start_dragging"], ["titlebar_double_click"]])
   })
 
   it("エージェントが、名前でツリーを見つけ、ファイルを選べる。フォルダーは選べない", async () => {

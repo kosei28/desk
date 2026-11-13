@@ -118,4 +118,9 @@ export const tokens = defineTokens({
   easings: {
     standard: { value: "cubic-bezier(0.2, 0, 0, 1)" },
   },
+  // 重なり順。帯（窓を動かす所）はウィンドウの幅いっぱいの層で、紙はその上に載る
+  zIndex: {
+    titlebar: { value: 0 },
+    paper: { value: 1 },
+  },
 })

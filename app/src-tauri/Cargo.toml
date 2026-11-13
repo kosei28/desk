@@ -13,5 +13,11 @@ tauri-build = { version = "2.7.4", features = [] }
 [dependencies]
 tauri = { version = "2.12.5", features = [] }
 
-[lints]
-workspace = true
+[target.'cfg(target_os = "macos")'.dependencies]
+# AppKit を呼ぶ（タイトルバーのダブルクリック）。版は tao と同じ
+objc2 = "0.6.5"
+
+# ワークスペースは unsafe を forbid にしている。このクレートは AppKit・CoreFoundation を呼ぶモジュール
+# （src/titlebar.rs・src/zoom.rs）の中でだけ unsafe を許したいので、deny にして、そこで allow する
+[lints.rust]
+unsafe_code = "deny"
