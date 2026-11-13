@@ -1,4 +1,4 @@
-//! `desk read`（Go の cmd_read_test.go を移したもの）。
+//! `desk read` の引数と出力の形（段・outline・section、名前で引く、`-` で標準入力から読む）。
 
 mod common;
 

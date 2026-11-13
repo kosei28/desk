@@ -1,4 +1,5 @@
-//! `desk graph`（Go の cmd_graph_test.go を移したもの）。
+//! `desk graph` の引数と出力の形。どの辺をたどるかは core のテスト
+//! （core/tests/query.rs）で見るので、ここは引数が core に届くことと、出し方を見る。
 
 mod common;
 

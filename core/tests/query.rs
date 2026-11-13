@@ -1,5 +1,4 @@
-//! 引く・読む・確かめるのテスト（Go の cmd_ls_test・cmd_graph_test・cmd_read_test・cmd_check_test のうち、
-//! 出力の形によらないところを core の API で見る）。出力の形は cli/tests で見る。
+//! 引く・読む・確かめるのテスト（何に当たるか・何が挙がるかを core の API で見る）。出力の形は cli/tests で見る。
 
 mod common;
 

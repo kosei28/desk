@@ -1,4 +1,4 @@
-//! Go の cli/internal/desk/doc_test.go を移したもの。
+//! 1 つのファイルの読み方（frontmatter、本文の見出しとリンク）と、行の書き換え。
 
 use desk_core::frontmatter::Value;
 use desk_core::{Doc, LinkForm, classify};

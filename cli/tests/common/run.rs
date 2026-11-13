@@ -12,7 +12,7 @@ pub struct Out {
     pub code: i32,
 }
 
-/// git がユーザーの設定を読まないようにし、コミットの作者を決める（Go のテストの isolateGit）。
+/// git がユーザーの設定を読まないようにし、コミットの作者を決める。
 pub fn isolate_git(c: &mut Command) -> &mut Command {
     c.env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")

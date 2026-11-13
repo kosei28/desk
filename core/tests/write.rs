@@ -1,5 +1,5 @@
-//! 書く側のテスト（Go の cmd_new_test・cmd_move_test・cmd_check_test の --fix のうち、出力の形によらないところを
-//! core の API で見る）。出力の形は cli/tests で見る。
+//! 書く側のテスト（init・new・archive・mv・check --fix が何を作り、どう動かし、どう直すかを core の API で見る）。
+//! 出力の形は cli/tests で見る。
 
 #![cfg(feature = "write")]
 
@@ -37,7 +37,7 @@ fn load(f: &Fixture) -> Tree {
     Tree::load(&f.root).unwrap()
 }
 
-// init（Go の TestInit*）
+// init
 
 #[test]
 fn init_creates_tree() {
@@ -107,7 +107,7 @@ fn init_inside_tree_fails() {
     assert!(write::init(&file).is_err(), "ファイルの場所に作れてしまう");
 }
 
-// new（Go の TestNewProjectAndTasks・TestNewRefusesNameUsedInArchive）
+// new
 
 fn req<'a>(kind: &'a str, slug: &'a str) -> NewRequest<'a> {
     NewRequest {
@@ -281,7 +281,7 @@ fn new_apply_does_not_overwrite() {
     assert_eq!(read(&f, &plan.path), "先に書いた\n");
 }
 
-// archive・mv（Go の cmd_move_test）
+// archive・mv
 
 #[test]
 fn archive_moves_and_rewrites_links() {
@@ -434,7 +434,7 @@ fn mv_rename_and_promote() {
     assert!(err.to_string().contains("決まりの外"), "{err}");
 }
 
-// check --fix（Go の TestCheckFix・TestCheckFixLeavesManualFindings）
+// check --fix
 
 fn fix(f: &Fixture) -> Vec<String> {
     let t = load(f);
