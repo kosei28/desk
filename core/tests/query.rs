@@ -102,7 +102,7 @@ fn ls_filters() {
 }
 
 #[test]
-fn where_errors_read_like_go() {
+fn where_errors() {
     assert_eq!(
         Where::parse("=x").unwrap_err().to_string(),
         r#"--where "=x": キーが無い（例: status=inprogress）"#
@@ -154,6 +154,13 @@ fn graph_walks() {
         w.order
             .contains(&"projects/recipe-app/tasks/2026-11-11-print-preview.md".to_string())
     );
+    // 1 つの点の辺はキー、そして指している側のパスの順
+    let keys: Vec<(&str, &str)> = w
+        .steps
+        .iter()
+        .map(|s| (s.key.as_str(), s.node.as_str()))
+        .collect();
+    assert!(keys.is_sorted() && keys.len() == 2, "{keys:?}");
 
     let w = t.walk(
         "projects/recipe-app/artifacts/print-layout.md",
