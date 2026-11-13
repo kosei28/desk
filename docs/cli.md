@@ -14,18 +14,20 @@ CLI の目的は 1 つ。**ツリーの形を、人とエージェントが毎�
 | 確かめる | `check`（形に合っているか。ツリーの中だけで分かるずれ。機械的な直しは `--fix`） | 決まりを全部覚えて 1 ファイルずつ見る。見落とす |
 | 動かす | `archive`（まとめて同じ形で `archive/` へ。タスクには `status` を書く）、`mv`（任意の移動）。どちらもリンクを付け替える | `git mv` のたびに `grep -rl` で古いパスを探して直す。漏れてリンクが切れる |
 
-形の定義（種類ごとの置き場所、名前の形、frontmatter のキーと値、必須の節、予約名）の正本はスキルで、CLI は同じものを実装する。`desk check --rules` は CLI が実装している形の一覧で、スキルと食い違えばスキルが正しく、CLI を直す。
+形の定義（種類ごとの置き場所、名前の形、frontmatter のキーと値、必須の節、予約名）の正本はスキルで、CLI は同じものを実装する。`desk rules` は CLI が実装している形の一覧で、スキルと食い違えばスキルが正しく、CLI を直す。
 
 CLI にしないもの: 中身を書く、何を読むか決める（組み立て）、外の世界（コードリポジトリ・PR・worktree）と突き合わせる、コミット、ロックや hook や「CLI を通さないと書けない」仕組み。CLI は補助ツールで、無くても形の一覧とスキルを読めば手でできる（「概要だけ読む」だけは `cat` で全部読むことになる）。
 
 ## 前提
 
-- Go の単一バイナリ。外部依存は `git` だけ。コードは仕組みのリポジトリの `cli/` で、`go install ./cli/cmd/desk` でバイナリを入れる
+- Rust の単一バイナリ。外部依存は `git` だけ。コードは仕組みのリポジトリの `cli/`（ツリーの形の解釈は `core/` のライブラリ `desk-core` にある）で、`cargo install --locked --path cli` でバイナリを入れる
 - 印のファイル `.desk` があるディレクトリがルートで、作業ディレクトリから上にたどって見つける。見つからなければ（ツリーの外で実行したら）何も書き換えずにエラーで止まり、推測して続けない。`desk root` がいまのルートを出す
 - 読むたびにツリー全体を走査する（数千ファイルまでなら十分速い）。保存しない。設定ファイルも持たない
 - 書く操作（`init`・`new`・`archive`・`mv`・`check --fix`）はファイルを作る・動かす・直すだけで、コミットはしない（例外は `init` の最初のコミットだけ）。コミットはエージェント（か人）が `git add <パス>` でやる。既にあるものは作らず、済んでいることはやらない（何度やっても同じ）
 - ファイルの指定はパス（作業ディレクトリから、またはルートから）。名前だけでも、ツリーの中で 1 件に決まれば通る。複数あれば、作業ディレクトリのプロジェクトで絞り、それでも決まらなければ候補を出して止まる
-- 出力は人もモデルも読める表。`--json` と `--paths`（パスだけ）と `--level 0|1|2`（当たったものを `read` のその段で出す）を持つ
+- 出力は人もモデルも読める表。`--json` と `--paths`（パスだけ）と `--level 0|1|2`（当たったものを `read` のその段で出す）を持ち、どれか 1 つを選ぶ
+- 複数の値を取るフラグ（`--via`・`--fields`・`--section`、`ls` の種類）は、カンマ区切りでも、繰り返しても書ける（`--via parent,tasks` も `--via parent --via tasks` も同じ）
+- 終了コードは、0 が成功、1 が失敗（`desk: …` を出す）か `check` で見つけたとき、2 が引数の誤り（組めないフラグを組んだときも）。`-h`・`--help` は使い方を出す
 
 ## `desk init`・`desk root`
 
@@ -57,17 +59,17 @@ desk new <種類> <slug> [--project <名前>] [--parent <タスク>] [--needs-hu
 ## `desk ls`
 
 ```
-desk ls [<種類>] [--name <名前>] [--project <名前>] [--archived]
-        [--where <キー><演算子><値>]... [--modified-before <日数>] [--modified-after <日数>]
+desk ls [<種類>,...] [--name <名前>] [--project <名前>] [--archived]
+        [--where <キー><演算子><値>]... [--modified-before <日数|日付>] [--modified-after <日数|日付>]
         [--fields <列>,...] [--json | --paths | --level 0|1|2]
 ```
 
-- 種類は `task` `artifact` `inbox` `library` `principle` `knowledge` `material` `wiki` `project`。省略すると全部。`archive/` の中は `--archived` で含める
+- 種類は `task` `artifact` `inbox` `library` `principle` `knowledge` `material` `wiki` `project`。複数を並べてもよく、省略すると全部。`archive/` の中は `--archived` で含める
 - `--name` はファイル名で引く。同じ名前が複数のプロジェクトにあれば全部出す（`--project` で絞る）
 - `--project <p>` の原則とナレッジには、ルートのものも入る
 - `--where <キー><演算子><値>`。演算子は `=` `!=` `~`（含む。配列は要素のどれか、文字列は部分一致、`~a,b` はどれか）`<` `>`（日付と数）。複数は AND。キーは frontmatter のどれでも。`[]` は空の配列。パスの値は名前だけでも当たる
-- `--modified-before`・`--modified-after`: 最終コミットの日付
-- `--fields`: `name` `path` `project` `kind` `modified`、frontmatter のキー、本文から取る `title`（見出し）と `now`（「いま」の 1 行目）
+- `--modified-before`・`--modified-after`: 最終コミットの日付で絞る。値は日数（`7` は 7 日前）か日付（`2026-11-01`）。before はその日より前、after はその日以降
+- `--fields`: `name` `path` `project` `kind` `modified`、frontmatter のキー、本文から取る `title`（見出し）と `now`（「いま」の 1 行目）。`--paths`・`--level` とは組めない
 - 例
 
   ```
@@ -90,6 +92,7 @@ desk graph --all [--via ...] [--format edges | dot]
 
 - ノードはファイル（`assets/` の中も含む）、辺は相対パスのリンクで、frontmatter のキーが辺の種類になる（本文の中は `body`）。方向は「書いてあるファイル → 指された先」。`--in` は指されているもの、`--out` は指しているもの、省略は両方を 1 段
 - 出力の各行はパス、種類（タスクは `status` も）、`description`（無ければ見出し）。`--level` を付けると各ノードを `read` のその段で出す
+- `--all` はツリー全体の辺を出す（`--format` は `edges` か `dot`、既定は `edges`）。`--in`・`--out`・`--depth`・`--level` とは組めない
 - 例
 
   ```
@@ -106,14 +109,14 @@ desk graph --all [--via ...] [--format edges | dot]
 
 ```
 desk read <パス>... [--level 0 | 1 | 2] [--outline] [--section <見出し>,...]
-desk read --stdin [...]            # desk ls --paths / desk graph --format paths の出力を受ける
+desk ls ... --paths | desk read - [...]   # `-` は標準入力の 1 行を 1 つのパスとして読む
 ```
 
 - パス（か、1 件に決まる名前）で引く。省略時は `--level 1`
 - `--level 0`: 概要。パス、種類、プロジェクト、`description`。タスクなら `status`・人が要るなら `needs_human`・見出し・「いま」の 1 行目も。1 件 1〜3 行
 - `--level 1`: そのファイル全体（frontmatter と本文）
 - `--level 2`: そのファイルと、本文がリンクで指す `.md`（1 段）。指す先はまず `--level 0` で並べ、本文は指された順に続ける
-- `--outline`: 見出しと、各節の行数だけ
+- `--outline`: 見出しと、各節の行数だけ（`--section` とは組めない）
 - `--section <見出し>,...`: その節だけ（見出しの行から、次の同じ深さの見出しの前まで）。無い見出しは注記して飛ばす
 - 例
 
@@ -128,7 +131,8 @@ desk read --stdin [...]            # desk ls --paths / desk graph --format paths
 ## `desk check`
 
 ```
-desk check [--project <名前>] [--name <名前>] [--fix] [--rules] [--json]
+desk check [--project <名前>] [--name <名前>] [--fix] [--json]
+desk rules
 ```
 
 形に合っているかと、ツリーの中だけで分かるずれを挙げる。1 行 = ファイル、何が、どう直すか。見つかれば終了コードは 1（何かを止めるためではなく、スクリプトから使えるように）。`--name` はそのファイルと、関係するファイルの分を出す。定期的には回さない。
@@ -145,7 +149,7 @@ desk check [--project <名前>] [--name <名前>] [--fix] [--rules] [--json]
 見ないもの: 中身の正しさ。外の世界との食い違い（ブランチのコミット、PR の状態、worktree の実在。operation.md 3.1 でエージェントが見る）。「触られていない」（守るのは不整合であって放置ではない）。関連の文書の置き場所（タスクが `archive/` にあるのに `artifacts/` が外、など）は決まりではないので挙げない。
 
 - `--fix` は、機械的に 1 通りに決まる直しだけ: 足りない frontmatter のキーを空で足す（`status`・`needs_human` も値は埋めない）、`status` と置き場所のずれを `archive/` との間の移動で直す、切れたリンクを同じ名前のファイルがツリーに 1 つだけあればそこへ付け替える（人が動かした後）。中身には触らない。直したファイルを出すので、エージェントがその変更だけをコミットする
-- `--rules` は、CLI が実装している形（種類ごとの置き場所、名前の形、frontmatter のキーと値、必須の節、予約名）を人が読める形で出す。正本はスキル
+- `desk rules` は、CLI が実装している形（種類ごとの置き場所、名前の形、frontmatter のキーと値、必須の節、予約名）を人が読める形で出す。正本はスキル。ツリーを読まないので、ツリーの外でも動く
 
 ## `desk archive`・`desk mv`
 
