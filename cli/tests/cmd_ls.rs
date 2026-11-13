@@ -83,6 +83,29 @@ fn output_forms() {
             && rows[0]["description"].is_string(),
         "--json: {rows:?}"
     );
+    // キーは決まった順で、frontmatter は書いてあるとおりの順で、--fields の列は後ろに
+    let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+    assert_eq!(
+        keys(&rows[0]),
+        [
+            "path",
+            "name",
+            "kind",
+            "project",
+            "archived",
+            "title",
+            "frontmatter",
+            "description"
+        ]
+    );
+    let rows: Value = serde_json::from_str(&ls(&["task", "--json"])).unwrap();
+    let task = &rows.as_array().unwrap()[0];
+    assert_eq!(keys(task)[6], "now", "{task}");
+    assert_eq!(
+        keys(&task["frontmatter"])[..2],
+        ["status", "needs_human"],
+        "{task}"
+    );
 
     // 段: プロジェクトは README.md を読む
     let out = ls(&["project", "--level", "0"]);

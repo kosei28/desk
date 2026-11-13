@@ -10,7 +10,7 @@ use relative_path::RelativePath;
 use serde::{Serialize, Serializer};
 
 use crate::doc::Doc;
-use crate::frontmatter::SortedFrontmatter;
+use crate::frontmatter::FrontmatterMap;
 use crate::link::LinkForm;
 use crate::path::{Info, classify, project_dir};
 use crate::rules::{ARCHIVE_DIR, Kind, MARKER_FILE, PROJECTS_DIR};
@@ -525,30 +525,30 @@ impl Entry<'_> {
     }
 }
 
-/// `ls --json` の 1 件の形。キーは名前の順（Go の encoding/json が map のキーを並べ替えるのに合わせる）。
+/// `ls --json` の 1 件の形。キーはここに並べた順。
 impl Serialize for Entry<'_> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         #[derive(Serialize)]
         struct Out<'a> {
-            archived: bool,
-            frontmatter: SortedFrontmatter<'a>,
-            kind: Option<Kind>,
+            path: &'a str,
             name: &'a str,
+            kind: Option<Kind>,
+            project: &'a str,
+            archived: bool,
+            title: &'a str,
             #[serde(skip_serializing_if = "Option::is_none")]
             now: Option<String>,
-            path: &'a str,
-            project: &'a str,
-            title: &'a str,
+            frontmatter: FrontmatterMap<'a>,
         }
         Out {
-            archived: self.info.archived,
-            frontmatter: SortedFrontmatter(self.doc.and_then(|d| d.frontmatter.as_ref())),
-            kind: self.info.kind,
-            name: self.name(),
-            now: (self.info.kind == Some(Kind::Task)).then(|| self.now()),
             path: &self.info.path,
+            name: self.name(),
+            kind: self.info.kind,
             project: &self.info.project,
+            archived: self.info.archived,
             title: self.title(),
+            now: (self.info.kind == Some(Kind::Task)).then(|| self.now()),
+            frontmatter: FrontmatterMap(self.doc.and_then(|d| d.frontmatter.as_ref())),
         }
         .serialize(s)
     }
