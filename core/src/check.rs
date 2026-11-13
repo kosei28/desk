@@ -1,6 +1,7 @@
 //! 確かめる: `desk check`。形に合っているかと、ツリーの中のずれ。
 //!
-//! 見つけたものに `fixable`（`--fix` で直せるか）と直し方の文言までを持たせる。直す計画は書く側（feature `write`）が作る。
+//! 見つけたものに、直し方の文言と、`--fix` で直せるならその直し（[`Remedy`]）を持たせる。直しを当てるのは書く側
+//! （feature `write`）。
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -72,6 +73,27 @@ pub struct Finding {
     /// `--name` で一緒に挙げるファイル
     #[serde(skip)]
     pub related: Vec<String>,
+    /// `--fix` で当てる直し（fixable のときだけ）
+    #[serde(skip)]
+    pub remedy: Option<Remedy>,
+}
+
+/// `--fix` で当てる、機械的に 1 通りに決まる直し。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Remedy {
+    /// frontmatter の最初に行を足す（frontmatter が無ければ作る）
+    Insert(Vec<String>),
+    /// 行の中のリンクの先を書き換える
+    Relink {
+        /// ファイルの行（0 始まり）
+        line: usize,
+        /// 行の中のバイト位置
+        start: usize,
+        old: String,
+        new: String,
+    },
+    /// archive/ の中か外へ動かす（`desk archive` と同じくリンクも付け替える）
+    Move { from: String, to: String },
 }
 
 fn is_zero(n: &usize) -> bool {
@@ -88,6 +110,7 @@ impl Finding {
             fix: fix.to_string(),
             fixable: false,
             related: Vec::new(),
+            remedy: None,
         }
     }
 
@@ -96,8 +119,9 @@ impl Finding {
         self
     }
 
-    fn fixable(mut self) -> Finding {
+    fn remedy(mut self, remedy: Remedy) -> Finding {
         self.fixable = true;
+        self.remedy = Some(remedy);
         self
     }
 
@@ -409,7 +433,7 @@ impl Checker<'_> {
                     "frontmatter が無い".to_string(),
                     &fix_text(&ins),
                 )
-                .fixable(),
+                .remedy(Remedy::Insert(ins)),
             );
             for k in keys.iter().filter(|k| k.required && k.non_empty) {
                 self.add(Finding::new(
@@ -426,7 +450,7 @@ impl Checker<'_> {
         for k in &keys {
             let Some(field) = fm.and_then(|fm| fm.get(k.name)) else {
                 if k.required {
-                    let ins = [key_line(k)];
+                    let ins = vec![key_line(k)];
                     self.add(
                         Finding::new(
                             path,
@@ -435,7 +459,7 @@ impl Checker<'_> {
                             format!("{} が無い", k.name),
                             &fix_text(&ins),
                         )
-                        .fixable(),
+                        .remedy(Remedy::Insert(ins)),
                     );
                     if k.non_empty {
                         self.add(Finding::new(
@@ -526,8 +550,8 @@ impl Checker<'_> {
                     }
                     let problem = format!("{place} のリンク {} の先が無い", l.raw);
                     let cands = self.t.find_by_name(base(&l.target));
-                    let f = if cands.len() == 1 && l.start.is_some() {
-                        let to = link_text(&rel_path(&dir(path), &cands[0].info.path), &l.anchor);
+                    let f = if let ([cand], Some(start)) = (&cands[..], l.start) {
+                        let to = link_text(&rel_path(&dir(path), &cand.info.path), &l.anchor);
                         Finding::new(
                             path,
                             line,
@@ -537,7 +561,12 @@ impl Checker<'_> {
                                 "--fix で {to} に付け替える（同じ名前のファイルがツリーに 1 つだけある）"
                             ),
                         )
-                        .fixable()
+                        .remedy(Remedy::Relink {
+                            line: l.line,
+                            start,
+                            old: l.raw.clone(),
+                            new: to,
+                        })
                     } else if cands.len() > 1 {
                         Finding::new(
                             path,
@@ -658,7 +687,10 @@ impl Checker<'_> {
                         problem,
                         "--fix で archive/ に移す（desk archive と同じ）",
                     )
-                    .fixable()
+                    .remedy(Remedy::Move {
+                        from: path.to_string(),
+                        to,
+                    })
                 });
             } else if is_open(&st) && d.info.archived {
                 if d.info.project_archived {
@@ -688,7 +720,10 @@ impl Checker<'_> {
                             problem,
                             "--fix で archive/ の外に戻す",
                         )
-                        .fixable()
+                        .remedy(Remedy::Move {
+                            from: path.to_string(),
+                            to,
+                        })
                     });
                 }
             }

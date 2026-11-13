@@ -171,7 +171,7 @@ impl Doc {
     }
 
     /// frontmatter の値が行の何バイト目から始まるかを探す。
-    fn locate(&self, v: &Scalar) -> Option<usize> {
+    pub(crate) fn locate(&self, v: &Scalar) -> Option<usize> {
         let s = self.lines.get(v.line)?;
         let mut off = s.char_indices().nth(v.column).map_or(s.len(), |(i, _)| i);
         if v.quoted {
