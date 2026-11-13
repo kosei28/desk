@@ -16,28 +16,11 @@ mod common;
 
 use std::path::Path;
 
-use common::cli::{self, Out};
-use common::go::{go_desk, go_run};
+use common::cli;
+use common::go::{fix_go_fm_lines, fix_go_yaml_errors, go_desk, go_run};
 use common::{Fixture, check_tree, edge_tree, recipe_tree, task_doc};
 use desk_core::Tree;
 use desk_core::query::days_before;
-use serde::{Deserialize, Serialize};
-
-/// Go の `check --json` の 1 件（項目の順も Go のまま読み書きする）。
-#[derive(Debug, Serialize, Deserialize)]
-struct GoFinding {
-    path: String,
-    #[serde(default, skip_serializing_if = "is_zero")]
-    line: usize,
-    category: String,
-    problem: String,
-    fix: String,
-    fixable: bool,
-}
-
-fn is_zero(n: &usize) -> bool {
-    *n == 0
-}
 
 /// cwd で両方を流し、全部同じか見る。
 fn same_in(cwd: &Path, args: &[&str]) {
@@ -547,68 +530,13 @@ fn check_clean_trees_match_go() {
     }
 }
 
-/// Go と変えたところ: frontmatter の値の行。Go は YAML のノードの行（frontmatter の中で 1 始まり、つまりファイルの
-/// 0 始まりの行）を 1 始まりの行として出し、1 行上を指していた。Rust は値のある行を 1 始まりで出す。
-/// 値の行を出すのは、キーがあるときの「X が空」「X の値 … は決まりの外」「X の値 … が日付でない」。
-fn fix_go_fm_lines(f: &Fixture, want: &mut Out) -> usize {
-    if want.stdout.is_empty() {
-        return 0;
-    }
-    let tree = Tree::load(&f.root).unwrap();
-    let mut found: Vec<GoFinding> = serde_json::from_str(&want.stdout).unwrap();
-    let mut n = 0;
-    for x in &mut found {
-        if x.category != "frontmatter" {
-            continue;
-        }
-        let key = x.problem.split(' ').next().unwrap();
-        let has_key = tree
-            .get(&x.path)
-            .and_then(|d| d.frontmatter.as_ref())
-            .is_some_and(|fm| fm.get(key).is_some());
-        if has_key {
-            x.line += 1;
-            n += 1;
-        }
-    }
-    want.stdout = serde_json::to_string_pretty(&found).unwrap() + "\n";
-    n
-}
-
-/// Go と変えたところ: YAML を読めないときの文言（Go は yaml.v3、Rust は saphyr の文）。行と、ほかの項目は同じ。
-fn fix_go_yaml_errors(f: &Fixture, want: &mut Out, got: &Out) -> usize {
-    if want.stdout.is_empty() {
-        return 0;
-    }
-    let tree = Tree::load(&f.root).unwrap();
-    let mut found: Vec<GoFinding> = serde_json::from_str(&want.stdout).unwrap();
-    let ours: Vec<GoFinding> = serde_json::from_str(&got.stdout).unwrap();
-    let mut n = 0;
-    for x in &mut found {
-        let Some(err) = tree.get(&x.path).and_then(|d| d.fm_error.clone()) else {
-            continue;
-        };
-        if x.category == "frontmatter" && x.line == 1 && x.fix == "手で直す" {
-            assert!(
-                ours.iter().any(|o| o.path == x.path && o.problem == err),
-                "{} の YAML のエラーが Rust に無い",
-                x.path
-            );
-            x.problem = err;
-            n += 1;
-        }
-    }
-    want.stdout = serde_json::to_string_pretty(&found).unwrap() + "\n";
-    n
-}
-
 /// check --json を比べる。Go と変えたところ（frontmatter の値の行、YAML のエラーの文言）は Go の側を直してから比べ、
 /// 直した数を返す。
 fn same_check(f: &Fixture, cwd: &Path, args: &[&str]) -> (usize, usize) {
     let mut want = go_run(cwd, args);
     let got = cli::run(cwd, args);
-    let lines = fix_go_fm_lines(f, &mut want);
-    let yaml = fix_go_yaml_errors(f, &mut want, &got);
+    let lines = fix_go_fm_lines(&f.root, &mut want);
+    let yaml = fix_go_yaml_errors(&f.root, &mut want, &got);
     assert_eq!(got, want, "desk {} が Go と違う", args.join(" "));
     (lines, yaml)
 }

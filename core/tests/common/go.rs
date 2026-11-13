@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
-use desk_core::Edge;
+use desk_core::{Edge, Tree};
+use serde::{Deserialize, Serialize};
 
 use super::cli::Out;
 
@@ -106,4 +107,75 @@ pub fn go_unquote(s: &str) -> (String, &str) {
         }
     }
     panic!("閉じていない文字列: {s}");
+}
+
+/// Go の `check --json` の 1 件（項目の順も Go のまま読み書きする）。
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GoFinding {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub line: usize,
+    pub category: String,
+    pub problem: String,
+    pub fix: String,
+    pub fixable: bool,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
+/// Go と変えたところ: frontmatter の値の行。Go は YAML のノードの行（frontmatter の中で 1 始まり、つまりファイルの
+/// 0 始まりの行）を 1 始まりの行として出し、1 行上を指していた。Rust は値のある行を 1 始まりで出す。
+/// 値の行を出すのは、キーがあるときの「X が空」「X の値 … は決まりの外」「X の値 … が日付でない」。
+pub fn fix_go_fm_lines(root: &Path, want: &mut Out) -> usize {
+    if want.stdout.is_empty() {
+        return 0;
+    }
+    let tree = Tree::load(root).unwrap();
+    let mut found: Vec<GoFinding> = serde_json::from_str(&want.stdout).unwrap();
+    let mut n = 0;
+    for x in &mut found {
+        if x.category != "frontmatter" {
+            continue;
+        }
+        let key = x.problem.split(' ').next().unwrap();
+        let has_key = tree
+            .get(&x.path)
+            .and_then(|d| d.frontmatter.as_ref())
+            .is_some_and(|fm| fm.get(key).is_some());
+        if has_key {
+            x.line += 1;
+            n += 1;
+        }
+    }
+    want.stdout = serde_json::to_string_pretty(&found).unwrap() + "\n";
+    n
+}
+
+/// Go と変えたところ: YAML を読めないときの文言（Go は yaml.v3、Rust は saphyr の文）。行と、ほかの項目は同じ。
+pub fn fix_go_yaml_errors(root: &Path, want: &mut Out, got: &Out) -> usize {
+    if want.stdout.is_empty() {
+        return 0;
+    }
+    let tree = Tree::load(root).unwrap();
+    let mut found: Vec<GoFinding> = serde_json::from_str(&want.stdout).unwrap();
+    let ours: Vec<GoFinding> = serde_json::from_str(&got.stdout).unwrap();
+    let mut n = 0;
+    for x in &mut found {
+        let Some(err) = tree.get(&x.path).and_then(|d| d.fm_error.clone()) else {
+            continue;
+        };
+        if x.category == "frontmatter" && x.line == 1 && x.fix == "手で直す" {
+            assert!(
+                ours.iter().any(|o| o.path == x.path && o.problem == err),
+                "{} の YAML のエラーが Rust に無い",
+                x.path
+            );
+            x.problem = err;
+            n += 1;
+        }
+    }
+    want.stdout = serde_json::to_string_pretty(&found).unwrap() + "\n";
+    n
 }

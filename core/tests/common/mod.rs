@@ -37,7 +37,19 @@ impl Fixture {
     pub fn copy_of(src: &Path) -> Fixture {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap().join("desk");
-        copy_dir(src, &root);
+        copy_dir(src, &root, false);
+        Fixture { _dir: dir, root }
+    }
+
+    /// このツリーの写しを、別の一時ディレクトリの同じ名前のルートに作る（.git も写す）。
+    pub fn duplicate(&self) -> Fixture {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join(self.root.file_name().unwrap());
+        copy_dir(&self.root, &root, true);
         Fixture { _dir: dir, root }
     }
 
@@ -58,17 +70,17 @@ impl Fixture {
     }
 }
 
-fn copy_dir(src: &Path, dst: &Path) {
+fn copy_dir(src: &Path, dst: &Path, git: bool) {
     fs::create_dir_all(dst).unwrap();
     for e in fs::read_dir(src).unwrap() {
         let e = e.unwrap();
-        if e.file_name() == ".git" {
+        if e.file_name() == ".git" && !git {
             continue;
         }
         let (from, to) = (e.path(), dst.join(e.file_name()));
         let t = e.file_type().unwrap();
         if t.is_dir() {
-            copy_dir(&from, &to);
+            copy_dir(&from, &to, git);
         } else if t.is_symlink() {
             #[cfg(unix)]
             std::os::unix::fs::symlink(fs::read_link(&from).unwrap(), &to).unwrap();
