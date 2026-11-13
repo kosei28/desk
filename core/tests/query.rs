@@ -380,7 +380,8 @@ fn check_findings() {
             .line
     };
     assert_eq!(line("tasks/2026-11-01-bad-status.md", "status の値"), 2);
-    assert_eq!(line("tasks/2026-11-21-values.md", "\"to\\u00a0do\""), 3);
+    // 値は Rust の Debug で引用する（見えない文字は \u{…} にエスケープ）
+    assert_eq!(line("tasks/2026-11-21-values.md", r#""to\u{a0}do""#), 3);
     assert_eq!(line("tasks/2026-11-21-values.md", "needs_human が空"), 4);
     assert_eq!(line("knowledge/bad-values.md", "description が空"), 2);
     assert_eq!(line("knowledge/bad-values.md", "verified の値"), 6);

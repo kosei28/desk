@@ -12,7 +12,6 @@ pub mod graph;
 pub mod link;
 pub mod path;
 pub mod query;
-pub mod quote;
 pub mod read;
 pub mod rules;
 pub mod tree;

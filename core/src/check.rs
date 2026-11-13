@@ -15,7 +15,6 @@ use crate::path::{
     archive_path, base, classify, dir, is_date, link_text, name_problem, rel_path, unarchive_path,
     unique_scope,
 };
-use crate::quote::go_quote;
 use crate::rules::{
     ARCHIVE_DIR, HUMAN_TASK_SECTIONS, KeyRule, Kind, LOG_SECTION, PROJECTS_DIR, ROOT_RESERVED,
     TASK_SECTIONS, project_entries, rule_by_dir, rule_of,
@@ -493,9 +492,8 @@ impl Checker<'_> {
                         line,
                         Category::Frontmatter,
                         format!(
-                            "{} の値 {} は決まりの外（{}）",
+                            "{} の値 {v:?} は決まりの外（{}）",
                             k.name,
-                            go_quote(v),
                             k.values.join("・")
                         ),
                         "手で直す",
@@ -506,7 +504,7 @@ impl Checker<'_> {
                         path,
                         line,
                         Category::Frontmatter,
-                        format!("{} の値 {} が日付（YYYY-MM-DD）でない", k.name, go_quote(v)),
+                        format!("{} の値 {v:?} が日付（YYYY-MM-DD）でない", k.name),
                         "手で直す",
                     ));
                 }
