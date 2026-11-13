@@ -1,5 +1,6 @@
 //! Go の cli/internal/desk/doc_test.go を移したもの。
 
+use desk_core::frontmatter::Value;
 use desk_core::{Doc, LinkForm, classify};
 
 #[test]
@@ -101,6 +102,22 @@ fn parse_doc_broken_frontmatter() {
 }
 
 #[cfg(feature = "write")]
+/// 閉じる `---` の前の改行も YAML のうちなので、最後の値でも `|`・`>` の値は改行で終わる。
+#[test]
+fn block_value_before_closing_line_keeps_newline() {
+    let d = Doc::parse(
+        classify("projects/app/knowledge/x.md"),
+        "---\nprinciple: |\n  a\ndescription: >\n  不具合は\n  構造で直す\n---\n# x\n",
+    );
+    let fm = d.frontmatter.as_ref().unwrap();
+    assert_eq!(fm.get("principle").unwrap().value, Value::Str("a\n".into()));
+    assert_eq!(
+        fm.get("description").unwrap().value,
+        Value::Str("不具合は 構造で直す\n".into())
+    );
+    assert_eq!(d.description(), "不具合は 構造で直す");
+}
+
 #[test]
 fn apply_edits() {
     use desk_core::edit::{Edit, apply_edits};

@@ -149,8 +149,6 @@ impl Node {
 pub fn parse(text: &str) -> Result<Frontmatter, FmError> {
     let mut p = Reader {
         parser: Parser::new_from_str(text),
-        len: text.chars().count(),
-        ends_with_newline: text.ends_with('\n'),
     };
     let root = p.document().map_err(|e| FmError::Yaml(e.to_string()))?;
     let Some(root) = root else {
@@ -203,9 +201,6 @@ pub fn parse(text: &str) -> Result<Frontmatter, FmError> {
 
 struct Reader<'a> {
     parser: Parser<'a, saphyr_parser::StrInput<'a>>,
-    /// 入力の文字数
-    len: usize,
-    ends_with_newline: bool,
 }
 
 impl<'a> Reader<'a> {
@@ -236,16 +231,7 @@ impl<'a> Reader<'a> {
         // span の行は 1 始まり。YAML の 1 行目はファイルの 2 行目（0 始まりで 1）なので、そのままファイルの行になる
         let line = span.start.line();
         Ok(match ev {
-            Event::Scalar(mut value, style, _, tag) => {
-                // 改行で終わらない入力の終わりまで続くブロック（| や >）は、終わりに改行を足さない
-                // （yaml.v3 と同じ。frontmatter は閉じる --- の前で切るので、最後の値がこれに当たる）
-                if matches!(style, ScalarStyle::Literal | ScalarStyle::Folded)
-                    && !self.ends_with_newline
-                    && span.end.index() >= self.len
-                    && value.ends_with('\n')
-                {
-                    value.to_mut().pop();
-                }
+            Event::Scalar(value, style, _, tag) => {
                 let null = match &tag {
                     Some(t) => t.is_yaml_core_schema() && t.suffix == "null",
                     None => {
@@ -336,11 +322,9 @@ mod tests {
     }
 
     #[test]
-    fn block_scalar_at_end() {
-        let fm = parse("a: |\n  x\n  y\nb: >\n  p\n  q").unwrap();
+    fn block_scalars_keep_final_newline() {
+        let fm = parse("a: |\n  x\n  y\nb: >\n  p\n  q\n").unwrap();
         assert_eq!(fm.get("a").unwrap().value, Value::Str("x\ny\n".into()));
-        assert_eq!(fm.get("b").unwrap().value, Value::Str("p q".into()));
-        let fm = parse("b: >\n  p\n  q\n").unwrap();
         assert_eq!(fm.get("b").unwrap().value, Value::Str("p q\n".into()));
     }
 
