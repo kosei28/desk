@@ -22,10 +22,10 @@ pub fn isolate_git(c: &mut Command) -> &mut Command {
         .env("GIT_COMMITTER_EMAIL", "test@example.com")
 }
 
-/// バイナリを cwd で、標準入力に stdin を渡して動かす。
-pub fn run_bin(bin: &Path, cwd: &Path, args: &[&str], stdin: &str) -> Out {
+/// desk を cwd で、標準入力に stdin を渡して動かす。
+pub fn desk_with_stdin(cwd: &Path, args: &[&str], stdin: &str) -> Out {
     let mut child = isolate_git(
-        Command::new(bin)
+        Command::new(env!("CARGO_BIN_EXE_desk"))
             .args(args)
             .current_dir(cwd)
             .stdin(Stdio::piped())
@@ -46,11 +46,6 @@ pub fn run_bin(bin: &Path, cwd: &Path, args: &[&str], stdin: &str) -> Out {
         stderr: String::from_utf8(out.stderr).unwrap(),
         code: out.status.code().unwrap(),
     }
-}
-
-/// desk を cwd で、標準入力に stdin を渡して動かす。
-pub fn desk_with_stdin(cwd: &Path, args: &[&str], stdin: &str) -> Out {
-    run_bin(Path::new(env!("CARGO_BIN_EXE_desk")), cwd, args, stdin)
 }
 
 /// desk を cwd で動かす（標準入力は空）。
