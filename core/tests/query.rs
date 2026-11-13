@@ -427,6 +427,102 @@ fn check_findings() {
 }
 
 #[test]
+fn check_needless_depends() {
+    let f = Fixture::new();
+    f.write(
+        "projects/deps/README.md",
+        "# deps\n\n依存の形を見るプロジェクト。\n",
+    );
+    let path = |name: &str| format!("projects/deps/tasks/2026-11-01-{name}.md");
+    let task = |name: &str, parent: &str, deps: &[&str]| {
+        let mut fm = Vec::new();
+        if !parent.is_empty() {
+            fm.push(format!("parent: 2026-11-01-{parent}.md"));
+        }
+        if !deps.is_empty() {
+            let deps: Vec<String> = deps.iter().map(|d| format!("2026-11-01-{d}.md")).collect();
+            fm.push(format!("depends_on: [{}]", deps.join(", ")));
+        }
+        f.write(&path(name), &task_doc("todo", &fm.join("\n"), name));
+    };
+    // 祖先と子孫の間: 孫も、子孫から祖先への向きも挙げる。兄弟の間は挙げない
+    task("a-parent", "", &["a-grandchild"]);
+    task("a-child", "a-parent", &[]);
+    task("a-grandchild", "a-child", &[]);
+    task("a-child2", "a-parent", &["a-child"]);
+    task("g-parent", "", &[]);
+    task("g-child", "g-parent", &[]);
+    task("g-grandchild", "g-child", &["g-parent"]);
+    // 依存の依存
+    task("b-x", "", &["b-y", "b-z"]);
+    task("b-y", "", &["b-z"]);
+    task("b-z", "", &[]);
+    // 祖先の依存を子孫で書き直す。特定の子だけ外の別のタスクに依存するのは挙げない
+    task("c-parent", "", &["c-ext"]);
+    task("c-child", "c-parent", &["c-ext"]);
+    task("c-child2", "c-parent", &["c-other"]);
+    task("c-ext", "", &[]);
+    task("c-other", "", &[]);
+    // 依存先の子孫。子孫だけに依存するのは挙げない
+    task("d-x", "", &["d-target", "d-target-child"]);
+    task("d-y", "", &["d-target-child"]);
+    task("d-target", "", &[]);
+    task("d-target-child", "d-target", &[]);
+    // 引き継ぎ・推移・依存先の子孫を合わせて導ける
+    task("e-parent", "", &["e-mid"]);
+    task("e-child", "e-parent", &["e-end-child"]);
+    task("e-mid", "", &["e-end"]);
+    task("e-end", "", &[]);
+    task("e-end-child", "e-end", &[]);
+    // 親子の間の依存からは導かない（兄弟の間の依存は残す）
+    task("f-parent", "", &["f-child"]);
+    task("f-child", "f-parent", &[]);
+    task("f-child2", "f-parent", &["f-child"]);
+
+    let fs = Tree::load(&f.root).unwrap().check();
+    let kin = |from: &str, to: &str, kin: &str| {
+        (
+            path(from),
+            format!(
+                "depends_on の {} が{kin}のタスク（親子の間には依存を張らない）",
+                path(to)
+            ),
+        )
+    };
+    let derived = |from: &str, to: &str| {
+        (
+            path(from),
+            format!("depends_on の {} はほかの依存から導ける", path(to)),
+        )
+    };
+    let mut want = vec![
+        kin("a-parent", "a-grandchild", "子孫"),
+        derived("b-x", "b-z"),
+        derived("c-child", "c-ext"),
+        derived("d-x", "d-target-child"),
+        derived("e-child", "e-end-child"),
+        kin("f-parent", "f-child", "子孫"),
+        kin("g-grandchild", "g-parent", "祖先"),
+    ];
+    want.sort();
+    let got: Vec<(String, String)> = fs
+        .iter()
+        .map(|f| (f.path.clone(), f.problem.clone()))
+        .collect();
+    assert_eq!(got, want);
+    assert!(
+        fs.iter()
+            .all(|f| f.category == Category::Drift && f.fix == "depends_on から外す" && !f.fixable)
+    );
+
+    // --name は依存先の分も出す
+    assert!(
+        fs.iter()
+            .any(|f| f.path == path("a-parent") && f.concerns(&path("a-grandchild")))
+    );
+}
+
+#[test]
 fn check_rules() {
     let out = describe();
     for want in [

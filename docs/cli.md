@@ -144,7 +144,7 @@ desk rules
 - **frontmatter。** 無い、必須キーが無い、必須キーの値が空、`status`・`needs_human` の値が決まりの外、日付のキーが日付でない
 - **リンク。** 本文と frontmatter のリンクの先が無い（切れたリンク）、相対パスでないリンク（絶対パス、`~` 始まり、名前だけ）、`assets/` の中にどこからも指されていないファイル
 - **内容の構成。** タスクに必須の節（目的・いま・成果物・現在地・決まり・手順。`needs_human: true` は目的・成果物）が無い、ログの節が最後にない。ナレッジに `description` か `principle` が無い（ほかのナレッジの本文から指されている詳細には `principle` を求めない）
-- **ツリーの中のずれ。** `done`・`dropped` のタスクが `archive/` の外（逆も）。`depends_on` に `done` でないものがあるのに `inprogress`・`done`、`todo` が `backlog` に依存、`dropped` 以外が `dropped` に依存。子が `inprogress` なのに親が `backlog`・`todo`、子が `todo` なのに親が `backlog`、親が終わっているのに子が終わっていない。`parent`・`depends_on` が自分自身を指す、循環している
+- **ツリーの中のずれ。** `done`・`dropped` のタスクが `archive/` の外（逆も）。`depends_on` に `done` でないものがあるのに `inprogress`・`done`、`todo` が `backlog` に依存、`dropped` 以外が `dropped` に依存。子が `inprogress` なのに親が `backlog`・`todo`、子が `todo` なのに親が `backlog`、親が終わっているのに子が終わっていない。`parent`・`depends_on` が自分自身を指す、循環している。`depends_on` が祖先か子孫（`parent` をたどってつながるタスク）を指す、ほかの依存から導ける（祖先の依存を子孫に引き継ぎ、依存をたどり、依存先の子孫にも依存しているとみなす。祖先か子孫を指す依存は導くのに使わない）
 
 見ないもの: 中身の正しさ。外の世界との食い違い（ブランチのコミット、PR の状態、worktree の実在。operation.md 3.1 でエージェントが見る）。「触られていない」（守るのは不整合であって放置ではない）。関連の文書の置き場所（タスクが `archive/` にあるのに `artifacts/` が外、など）は決まりではないので挙げない。
 

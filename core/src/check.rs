@@ -797,6 +797,104 @@ impl Checker<'_> {
         }
         self.check_cycles(&tasks, "parent");
         self.check_cycles(&tasks, "depends_on");
+        self.check_needless_depends(&tasks);
+    }
+
+    /// depends_on のうち、祖先か子孫を指すものと、ほかの依存から導けるものを挙げる。
+    ///
+    /// 導けるかは、祖先の依存を子孫に引き継ぎ、依存をたどり、依存先の子孫にも依存しているとみなして判定する。
+    /// 祖先か子孫を指す依存は、導くのに使わない。
+    fn check_needless_depends(&mut self, tasks: &[&Doc]) {
+        let t = self.t;
+        let is_task = |p: &str| t.get(p).is_some_and(|d| d.info.kind == Some(Kind::Task));
+        let mut parents: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
+        for d in tasks {
+            let path = d.info.path.as_str();
+            for p in link_targets(d, "parent").filter(|&p| p != path && is_task(p)) {
+                parents.entry(path).or_default().push(p);
+                children.entry(p).or_default().push(path);
+            }
+        }
+        let empty = HashSet::new();
+        let mut ancestors: HashMap<&str, HashSet<&str>> = HashMap::new();
+        let mut descendants: HashMap<&str, HashSet<&str>> = HashMap::new();
+        let mut deps: HashMap<&str, Vec<&str>> = HashMap::new();
+        for d in tasks {
+            let path = d.info.path.as_str();
+            ancestors.insert(path, reach(path, &parents));
+            descendants.insert(path, reach(path, &children));
+        }
+        for d in tasks {
+            let path = d.info.path.as_str();
+            let mut seen = HashSet::new();
+            for p in link_targets(d, "depends_on") {
+                if p == path || !is_task(p) || !seen.insert(p) {
+                    continue;
+                }
+                let kin = if ancestors[path].contains(p) {
+                    "祖先"
+                } else if descendants[path].contains(p) {
+                    "子孫"
+                } else {
+                    deps.entry(path).or_default().push(p);
+                    continue;
+                };
+                self.add(
+                    Finding::new(
+                        path,
+                        0,
+                        Category::Drift,
+                        format!("depends_on の {p} が{kin}のタスク（親子の間には依存を張らない）"),
+                        "depends_on から外す",
+                    )
+                    .related(vec![p.to_string()]),
+                );
+            }
+        }
+        // x が待っているタスクに y が入るか（x の depends_on の y は使わずに）
+        let derivable = |x: &str, y: &str| {
+            let mut from: HashSet<&str> = HashSet::new();
+            let mut waits: HashSet<&str> = HashSet::new();
+            let mut stack: Vec<&str> = vec![x];
+            stack.extend(ancestors.get(x).unwrap_or(&empty));
+            while let Some(s) = stack.pop() {
+                if !from.insert(s) {
+                    continue;
+                }
+                for &d in deps.get(s).into_iter().flatten() {
+                    if s == x && d == y {
+                        continue;
+                    }
+                    for w in std::iter::once(d)
+                        .chain(descendants.get(d).unwrap_or(&empty).iter().copied())
+                    {
+                        if waits.insert(w) {
+                            stack.push(w);
+                            stack.extend(ancestors.get(w).unwrap_or(&empty));
+                        }
+                    }
+                }
+            }
+            waits.contains(y)
+        };
+        for d in tasks {
+            let path = d.info.path.as_str();
+            for &p in deps.get(path).into_iter().flatten() {
+                if derivable(path, p) {
+                    self.add(
+                        Finding::new(
+                            path,
+                            0,
+                            Category::Drift,
+                            format!("depends_on の {p} はほかの依存から導ける"),
+                            "depends_on から外す",
+                        )
+                        .related(vec![p.to_string()]),
+                    );
+                }
+            }
+        }
     }
 
     /// key のリンクが自分自身を指すか、循環しているタスクを挙げる。
@@ -851,6 +949,18 @@ impl Checker<'_> {
             }
         }
     }
+}
+
+/// start から next をたどって行けるタスク（start は入れない）。
+fn reach<'a>(start: &'a str, next: &HashMap<&'a str, Vec<&'a str>>) -> HashSet<&'a str> {
+    let mut out = HashSet::new();
+    let mut stack: Vec<&str> = next.get(start).into_iter().flatten().copied().collect();
+    while let Some(v) = stack.pop() {
+        if v != start && out.insert(v) {
+            stack.extend(next.get(v).into_iter().flatten());
+        }
+    }
+    out
 }
 
 /// 強連結成分（Tarjan）。各成分の中はパスの順。
