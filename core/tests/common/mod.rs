@@ -87,7 +87,7 @@ fn copy_dir(src: &Path, dst: &Path, git: bool) {
     }
 }
 
-/// タスクのファイルの中身（Go のテストの taskDoc）。
+/// タスクのファイルの中身。
 pub fn task_doc(status: &str, extra_fm: &str, title: &str) -> String {
     let mut fm = format!("status: {status}\n");
     if !extra_fm.contains("needs_human:") {
@@ -102,7 +102,7 @@ pub fn task_doc(status: &str, extra_fm: &str, title: &str) -> String {
     )
 }
 
-/// 架空のレシピアプリのプロジェクトを持つツリー（Go のテストの recipeTree）。
+/// 架空のレシピアプリのプロジェクトを持つツリー。
 pub fn recipe_tree() -> Fixture {
     let f = Fixture::new();
     f.write(
@@ -362,7 +362,7 @@ impl Fixture {
     }
 }
 
-/// check で挙がるものを集めたツリー（Go のテストの TestCheckFindings のツリーに、frontmatter の値の行を見るものを足した）。
+/// check で挙がるものを集めたツリー。
 pub fn check_tree() -> Fixture {
     let f = recipe_tree();
     let p = "projects/recipe-app/";

@@ -1,4 +1,4 @@
-//! Go の cli/internal/desk/path_test.go を移したもの。
+//! パスから分かること（種類・プロジェクト・archive の中か）、archive との間のパス、名前の決まり。
 
 use desk_core::path::{archive_path, name_problem, unarchive_path};
 use desk_core::{Kind, classify};

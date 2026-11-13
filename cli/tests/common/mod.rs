@@ -27,7 +27,7 @@ pub fn git(dir: &Path, args: &[&str]) -> String {
 }
 
 /// desk init の後と同じ形にする: git のリポジトリにし、init が置くファイルだけを最初のコミットにする
-/// （Go のテストの newTree。そのあとに書いたものはコミットしない）。
+/// （そのあとに書いたものはコミットしない）。
 pub fn with_git(f: Fixture) -> Fixture {
     git(&f.root, &["init", "-q", "-b", "main"]);
     git(
@@ -44,7 +44,7 @@ pub fn with_git(f: Fixture) -> Fixture {
     f
 }
 
-/// 全部をコミットする（Go のテストの gitAddAll）。
+/// 全部をコミットする。
 pub fn git_add_all(root: &Path) {
     git(root, &["add", "-A"]);
     git(root, &["commit", "-q", "-m", "fixture"]);
@@ -59,7 +59,7 @@ pub fn exists(root: &Path, rel: &str) -> bool {
     root.join(rel).exists()
 }
 
-/// ツリーの外で動かしたコマンドが、何も書かずに「ツリーの中ではない」で止まるか（Go のテストの outsideTreeFails）。
+/// ツリーの外で動かしたコマンドが、何も書かずに「ツリーの中ではない」で止まるか。
 pub fn outside_tree_fails(cmds: &[&[&str]]) {
     let dir = tempfile::tempdir().unwrap();
     let outside = dir.path().canonicalize().unwrap();
