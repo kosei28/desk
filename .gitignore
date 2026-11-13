@@ -1,2 +1,5 @@
 .DS_Store
 /target/
+/app/node_modules/
+/app/dist/
+/app/styled-system/
