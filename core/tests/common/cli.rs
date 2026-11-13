@@ -1,4 +1,5 @@
-//! 差分テストのための、CLI の出力の形に整える層（ls・graph・read・check の読む側）。
+//! 差分テストのための、CLI の出力の形に整える層（ls・graph・read・check と、feature `write` の init・new・archive・mv・
+//! check --fix）。
 //!
 //! CLI の段（R4）の前なので、Go の CLI と同じ引数を受けて core を呼び、Go と同じ標準出力・標準エラー・終了コードにする。
 //! 出力の整形は core に置かない決まり（設計の 2 節）なので、ここに置き、R4 で CLI の crate に移す。
@@ -36,6 +37,14 @@ pub fn run(cwd: &Path, args: &[&str]) -> Out {
         "graph" => graph(&mut o, cwd, &args[1..]),
         "read" => read(&mut o, cwd, &args[1..]),
         "check" => check(&mut o, cwd, &args[1..]),
+        #[cfg(feature = "write")]
+        "init" => write::init(&mut o, cwd, &args[1..]),
+        #[cfg(feature = "write")]
+        "new" => write::new(&mut o, cwd, &args[1..]),
+        #[cfg(feature = "write")]
+        "archive" => write::archive(&mut o, cwd, &args[1..]),
+        #[cfg(feature = "write")]
+        "mv" => write::mv(&mut o, cwd, &args[1..]),
         c => panic!("このテストの層に無いコマンド: {c}"),
     };
     if let Err(e) = res {
@@ -543,21 +552,57 @@ fn check(o: &mut Out, cwd: &Path, args: &[&str]) -> Result<(), Fail> {
         o.stdout = describe();
         return Ok(());
     }
-    assert!(!f.on("fix"), "check --fix は R3 で比べる");
-    assert!(f.on("json"), "check の表は R4 で比べる");
     let t = load(cwd)?;
     let target = match f.str("name").filter(|s| !s.is_empty()) {
         Some(n) => Some(t.resolve(n, cwd).map_err(fail)?),
         None => None,
     };
     let project = f.str("project").filter(|s| !s.is_empty());
-    let found: Vec<Finding> = t
-        .check()
-        .into_iter()
-        .filter(|x| project.is_none_or(|p| x.in_project(p)))
-        .filter(|x| target.as_deref().is_none_or(|p| x.concerns(p)))
-        .collect();
-    o.stdout = serde_json::to_string_pretty(&found).unwrap() + "\n";
+    let filter = |t: &Tree| -> Vec<Finding> {
+        t.check()
+            .into_iter()
+            .filter(|x| project.is_none_or(|p| x.in_project(p)))
+            .filter(|x| target.as_deref().is_none_or(|p| x.concerns(p)))
+            .collect()
+    };
+    #[allow(unused_mut)]
+    let mut found = filter(&t);
+    if f.on("fix") {
+        #[cfg(feature = "write")]
+        {
+            let changed = desk_core::write::FixPlan::new(&found)
+                .apply(&t)
+                .map_err(fail)?;
+            if !changed.is_empty() {
+                found = filter(&Tree::load(t.root()).map_err(fail)?);
+            }
+            if !f.on("json") && !changed.is_empty() {
+                line(o, "直した:");
+                for p in &changed {
+                    line(o, &format!("  {p}"));
+                }
+                line(
+                    o,
+                    &format!(
+                        "コミットするとき: git -C {} add {}",
+                        display_path(t.root()),
+                        changed.join(" ")
+                    ),
+                );
+                if !found.is_empty() {
+                    line(o, "");
+                }
+            }
+        }
+        #[cfg(not(feature = "write"))]
+        panic!("check --fix は feature write で比べる");
+    }
+    if f.on("json") {
+        o.stdout += &(serde_json::to_string_pretty(&found).unwrap() + "\n");
+    } else {
+        assert!(found.is_empty(), "check の表は R4 で比べる");
+        o.stderr.push_str("（形に合っている）\n");
+    }
     if !found.is_empty() {
         return Err(Fail {
             code: 1,
@@ -565,4 +610,167 @@ fn check(o: &mut Out, cwd: &Path, args: &[&str]) -> Result<(), Fail> {
         });
     }
     Ok(())
+}
+
+/// ホームの下なら ~/ からのパスにする（Go の displayPath）。
+fn display_path(p: &Path) -> String {
+    if let Some(home) = std::env::home_dir()
+        && let Ok(rel) = p.strip_prefix(&home)
+    {
+        return format!("~/{}", rel.display());
+    }
+    p.display().to_string()
+}
+
+// 書く側
+
+#[cfg(feature = "write")]
+mod write {
+    use std::path::Path;
+
+    use desk_core::Tree;
+    use desk_core::write::{Error, MovePlan, NewRequest, absolute, init as core_init};
+
+    use super::{Fail, Flags, Out, display_path, fail, line, load, today, usage};
+
+    fn err(e: Error) -> Fail {
+        if e.is_usage() { usage(e) } else { fail(e) }
+    }
+
+    pub fn init(o: &mut Out, cwd: &Path, args: &[&str]) -> Result<(), Fail> {
+        let f = Flags::parse(args, &[]);
+        let dir = match &f.pos[..] {
+            [] => ".",
+            [d] => d.as_str(),
+            _ => return Err(usage("desk init に渡せるパスは 1 つ")),
+        };
+        let root = absolute(cwd, dir);
+        let r = core_init(&root).map_err(err)?;
+        if r.already {
+            line(
+                o,
+                &format!("{} はもうツリーのルート（作るものは無い）", root.display()),
+            );
+            return Ok(());
+        }
+        line(o, &format!("{} を作った:", root.display()));
+        for c in &r.created {
+            line(o, &format!("  {c}"));
+        }
+        if r.committed {
+            line(o, "最初のコミットを作った");
+        } else if !r.written.is_empty() {
+            line(
+                o,
+                &format!(
+                    "コミットはしていない: git -C {} add {}",
+                    display_path(&root),
+                    r.written.join(" ")
+                ),
+            );
+        }
+        line(o, "desk はこのディレクトリかその下で実行する");
+        Ok(())
+    }
+
+    pub fn new(o: &mut Out, cwd: &Path, args: &[&str]) -> Result<(), Fail> {
+        let f = Flags::parse(args, &["needs-human"]);
+        let [kind, slug] = &f.pos[..] else {
+            panic!("使い方の文言は R4 で比べる");
+        };
+        let t = load(cwd)?;
+        let today = today();
+        let req = NewRequest {
+            kind,
+            slug,
+            project: f.str("project"),
+            parent: f.str("parent"),
+            needs_human: f.on("needs-human"),
+            title: f.str("title"),
+            today: &today,
+        };
+        let plan = t.plan_new(&req, cwd).map_err(err)?;
+        let p = plan.apply(&t).map_err(err)?;
+        line(o, &p.display().to_string());
+        Ok(())
+    }
+
+    pub fn archive(o: &mut Out, cwd: &Path, args: &[&str]) -> Result<(), Fail> {
+        let f = Flags::parse(args, &["dry-run"]);
+        let status = f.str("status").filter(|s| !s.is_empty());
+        if status.is_some_and(|s| s != "done" && s != "dropped") {
+            return Err(usage("--status は done か dropped"));
+        }
+        let t = load(cwd)?;
+        let dry = f.on("dry-run");
+        if let Some(name) = f.str("project").filter(|s| !s.is_empty()) {
+            if !f.pos.is_empty() || status.is_some() {
+                return Err(usage("--project にはパスも --status も付けない"));
+            }
+            let plan = t.plan_archive_project(name).map_err(err)?;
+            return perform(o, &t, &plan, dry);
+        }
+        assert!(!f.pos.is_empty(), "使い方の文言は R4 で比べる");
+        let srcs: Vec<&str> = f.pos.iter().map(String::as_str).collect();
+        let a = t.plan_archive(&srcs, status, cwd);
+        for p in &a.already {
+            line(o, &format!("既に archive/ にある: {p}"));
+        }
+        match a.plan.map_err(err)? {
+            Some(plan) => perform(o, &t, &plan, dry),
+            None => Ok(()),
+        }
+    }
+
+    pub fn mv(o: &mut Out, cwd: &Path, args: &[&str]) -> Result<(), Fail> {
+        let f = Flags::parse(args, &["dry-run"]);
+        assert!(f.pos.len() >= 2, "使い方の文言は R4 で比べる");
+        let t = load(cwd)?;
+        let (dest, srcs) = f.pos.split_last().unwrap();
+        let srcs: Vec<&str> = srcs.iter().map(String::as_str).collect();
+        let plan = t.plan_mv(&srcs, dest, cwd).map_err(err)?;
+        perform(o, &t, &plan, f.on("dry-run"))
+    }
+
+    /// 計画を出すか（--dry-run）、当てて結果を出す。
+    fn perform(o: &mut Out, t: &Tree, plan: &MovePlan, dry: bool) -> Result<(), Fail> {
+        if dry {
+            line(o, "動かす:");
+            for m in &plan.moves {
+                line(o, &format!("  {} → {}", m.from, m.to));
+            }
+            if !plan.edits.is_empty() {
+                line(o, "書き換える:");
+            }
+            for (p, fe) in &plan.edits {
+                for e in &fe.edits {
+                    line(o, &format!("  {p}:{}  {} → {}", e.line + 1, e.old, e.new));
+                }
+                for ins in &fe.inserts {
+                    line(o, &format!("  {p}  （frontmatter に足す）{ins}"));
+                }
+            }
+            return Ok(());
+        }
+        let res = plan.apply(t).map_err(err)?;
+        line(o, "動かした:");
+        for m in &res.moved {
+            line(o, &format!("  {} → {}", m.from, m.to));
+        }
+        if !res.rewritten.is_empty() {
+            line(o, "書き換えた（リンク・status）:");
+            for p in &res.rewritten {
+                line(o, &format!("  {p}"));
+            }
+        }
+        line(
+            o,
+            &format!(
+                "コミットするとき: git -C {} add {}",
+                display_path(t.root()),
+                res.add_paths().join(" ")
+            ),
+        );
+        Ok(())
+    }
 }
