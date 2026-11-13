@@ -1,8 +1,8 @@
 [workspace]
-# cli（desk-cli）は R4 で、app/src-tauri（desk-app）はアプリの順 1 で足す。
+# app/src-tauri（desk-app）はアプリの順 1 で足す。
 # default-members は core と cli にし、直下の cargo build・cargo test では Node も Tauri も要らないようにする。
-members = ["core"]
-default-members = ["core"]
+members = ["core", "cli"]
+default-members = ["core", "cli"]
 resolver = "3"
 
 [workspace.package]

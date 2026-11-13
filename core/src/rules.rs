@@ -69,7 +69,7 @@ pub struct KeyRule {
     pub values: &'static [&'static str],
     /// YYYY-MM-DD
     pub date: bool,
-    /// --rules に出す説明
+    /// `desk rules` に出す説明
     pub note: &'static str,
 }
 
@@ -440,7 +440,7 @@ pub fn project_entries() -> Vec<&'static str> {
     out
 }
 
-/// 実装している形の一覧（`desk check --rules` の出力そのもの）。
+/// 実装している形の一覧（`desk rules` の出力そのもの）。
 pub fn describe() -> String {
     let mut w = String::new();
     let mut line = |s: &str| {
