@@ -2,7 +2,6 @@
 
 use crate::doc::one_line;
 use crate::path::{base, clean, dir, join};
-use crate::quote::go_quote;
 use crate::rules::{Kind, link_keys};
 use crate::tree::{Entry, Tree};
 
@@ -54,11 +53,10 @@ impl std::fmt::Display for WhereError {
             WhereError::NoKey(s) => {
                 write!(
                     f,
-                    "--where {}: キーが無い（例: status=inprogress）",
-                    go_quote(s)
+                    "--where {s:?}: キーが無い（例: status=inprogress）"
                 )
             }
-            WhereError::NoOp(s) => write!(f, "--where {}: 演算子は = != ~ < >", go_quote(s)),
+            WhereError::NoOp(s) => write!(f, "--where {s:?}: 演算子は = != ~ < >"),
         }
     }
 }

@@ -6,7 +6,6 @@ use std::path::Path;
 
 use clap::ValueEnum;
 use desk_core::graph::{Direction, Walk, edges_via};
-use desk_core::quote::go_quote;
 use desk_core::{Edge, Kind, Tree};
 
 use crate::read::{ReadOpt, kind_of, read_doc};
@@ -184,12 +183,29 @@ fn dot(out: &mut dyn Write, edges: &[Edge]) -> io::Result<()> {
                 out,
                 &format!(
                     "  {} -> {} [label={}];",
-                    go_quote(&ed.from),
-                    go_quote(&ed.to),
-                    go_quote(&ed.key)
+                    dot_id(&ed.from),
+                    dot_id(&ed.to),
+                    dot_id(&ed.key)
                 ),
             )?;
         }
     }
     line(out, "}")
+}
+
+/// DOT の引用された ID（`"` で囲み、中の `"` と `\` をエスケープする）。
+fn dot_id(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dot_id;
+
+    #[test]
+    fn dot_id_escapes_quote_and_backslash_only() {
+        assert_eq!(dot_id("a.md"), r#""a.md""#);
+        assert_eq!(dot_id(r#"a"b\c"#), r#""a\"b\\c""#);
+        assert_eq!(dot_id("献立\u{a0}.md"), "\"献立\u{a0}.md\"");
+    }
 }

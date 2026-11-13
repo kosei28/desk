@@ -9,7 +9,6 @@ use regex::Regex;
 
 use super::Error;
 use crate::path::{base, dir, project_dir, rel_path, split_dated};
-use crate::quote::go_quote;
 use crate::rules::{ARCHIVE_DIR, HUMAN_TASK_SECTIONS, Kind, rule_of};
 use crate::tree::Tree;
 
@@ -80,8 +79,8 @@ impl Tree {
         let Some((kind, rule)) = Kind::from_name(req.kind).and_then(|k| Some((k, rule_of(k)?)))
         else {
             return Err(Error::usage(format!(
-                "知らない種類 {}（task artifact inbox library principle knowledge material wiki project）",
-                go_quote(req.kind)
+                "知らない種類 {:?}（task artifact inbox library principle knowledge material wiki project）",
+                req.kind
             )));
         };
         if req.needs_human && kind != Kind::Task {
