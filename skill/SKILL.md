@@ -71,7 +71,7 @@ description: あらゆる作業ドキュメント（タスクと依存、調査�
 ```markdown
 ---
 status: inprogress        # 必須。backlog / todo / inprogress / done / dropped
-owner: ai                 # 必須。ai / human
+needs_human: false        # 必須。false / true
 parent: 2026-09-07-meal-planner.md                          # 親タスク（相対パス）
 depends_on: [2026-10-14-meal-planner-shopping-list.md]   # 待っているタスク（相対パス）
 repo: ~/src/recipe-app
@@ -109,24 +109,25 @@ pr: https://github.com/example/recipe-app/pull/128
 - 試してやめた: 画面に印刷用のスタイルを当てるだけにする。1 週間分が 1 枚に収まらなかった
 ```
 
-- **節**: `owner: ai` のタスクは 目的・いま・成果物・現在地・決まり・手順 を持つ。頭の 3 節（目的・いま・成果物）は人向けで、人が読むのはここまで。現在地・決まり・手順は AI 向けの状態
+- **節**: `needs_human: false` のタスクは 目的・いま・成果物・現在地・決まり・手順 を持つ。頭の 3 節（目的・いま・成果物）は人向けで、人が読むのはここまで。現在地・決まり・手順は AI 向けの状態
+- **成果物**は PR と人に見せる文書へのリンク。数行で済む本当に軽い中身（確認の結果など）だけは、ファイルを作らずに直接書いてよい
 - **`status`**: `backlog`（やるか決めていない・いつか）、`todo`（やると決めた・未着手）、`inprogress`（着手している）、`done`、`dropped`。待っていることは `depends_on` で表す
-- **frontmatter**: `status` と `owner` が必須。`parent`・`depends_on` はタスクのファイルへの相対パス（同じ `tasks/` ならファイル名だけ）。`repo` と `worktree` は `~` からのパス（コードリポジトリはツリーの外なので相対にしない）。ブランチ・base・worktree・PR はタスクが 1 本の枝を持つときに書く。複数の枝を持つなら子タスクに分けるか、手順の行の末尾に書く。正本はこのファイルだけ
+- **frontmatter**: `status` と `needs_human` が必須。`needs_human` は人の判断か作業が要るかで、誰がやるかではない（`false` のタスクを人がやってもよい）。`parent`・`depends_on` はタスクのファイルへの相対パス（同じ `tasks/` ならファイル名だけ）。`repo` と `worktree` は `~` からのパス（コードリポジトリはツリーの外なので相対にしない）。ブランチ・base・worktree・PR はタスクが 1 本の枝を持つときに書く。複数の枝を持つなら子タスクに分けるか、手順の行の末尾に書く。正本はこのファイルだけ
 - **親子**は子の `parent` だけで表す。親のファイルに子を列挙しない。順序や依存を見せたいときだけ、親の手順に `→ [子](<子のファイル>.md)` の行を置く（チェックボックスは付けず、状態は子にだけ持つ）
 - **依存**は後のタスクの `depends_on` にだけ書く。逆向きは `desk graph <タスク> --in --via depends_on` で引く
 
 **ログ（タスクのファイルのいちばん下の節）。** そのタスクの決定と経緯を、日付の小見出し（`### YYYY-MM-DD`）で追記だけする。要るときに節を作る。別のファイルにせず、1 セッション 1 ファイルの作業ログも作らない。
 
 - 書くもの: 決定（`決定:` で始め、理由と却下した案を添える）、残す価値のある出来事
-- 書かないもの: やったことの羅列（git にある）、次の一手（現在地）、人に聞くこと（人のタスク）
+- 書かないもの: やったことの羅列（git にある）、次の一手（現在地）、人に聞くこと（人が要るタスク）
 - 長くなってきたら、タスクが大きすぎる印なので子タスクに分ける
 
-**人のタスク（`owner: human`）。** 人に判断してほしいこと（確認）も、人がやる作業も、そのタスクの子タスクとして切り出し、`owner: human` を付ける。節は 目的・成果物。
+**人が要るタスク（`needs_human: true`）。** 人に判断してほしいこと（確認）も、人がやる作業も、そのタスクの子タスクとして切り出し、`needs_human: true` を付ける。節は 目的・成果物。
 
 ```markdown
 ---
 status: todo
-owner: human
+needs_human: true
 parent: 2026-11-09-printable-menu.md
 ---
 
@@ -140,8 +141,8 @@ a A4 だけ / b A4 と B5 / c 使う人が選ぶ。おすすめ a（家庭のプ
 ```
 
 - 目的に、聞きたいことと選択肢とおすすめを書く
-- 聞いたタスクは `depends_on` で人のタスクを指す
-- 答えが出たら、決定は親（聞いたタスク）のログに書き、人のタスクの成果物からそれを指して `done` にする
+- 聞いたタスクは `depends_on` で人が要るタスクを指す
+- 答えが出たら、決定は親（聞いたタスク）のログに書き、人が要るタスクの成果物からそれを指して `done` にする
 
 ### タスクの文書とメモ（`artifacts/`）
 
@@ -310,8 +311,8 @@ knowledge: []            # 必須。蒸留してできた・足したナレッ�
 | --- | --- | --- | --- |
 | タスクの目的・終わりの条件 | タスク「目的」 | 人 | 状態 |
 | 人が知るべき進み具合 | タスク「いま」 | 人 | 状態 |
-| 成果物（PR・人に見せる文書）へのリンク | タスク「成果物」 | 人 | 状態 |
-| 人に判断してほしいこと・やってほしいこと | `owner: human` の子タスク | 人 | 状態 |
+| 成果物（PR・人に見せる文書）へのリンク。本当に軽い中身はそのまま | タスク「成果物」 | 人 | 状態 |
+| 人に判断してほしいこと・やってほしいこと | `needs_human: true` の子タスク | 人 | 状態 |
 | 人に見せる結論（設計、レビュー結果など） | `artifacts/` | 人 | 状態 |
 | 次の一手・何を待っているか | タスク「現在地」 | AI | 状態 |
 | タスクの中だけの運用 | タスク「決まり」 | AI | 状態 |
@@ -450,9 +451,9 @@ knowledge: []            # 必須。蒸留してできた・足したナレッ�
 | --- | --- |
 | ルートを作る・知る | `desk init [<パス>]`（省略は作業ディレクトリ。ツリーの中には作らない）、`desk root` |
 | プロジェクトを作る | `desk new project <名前>` |
-| タスクを作る | `desk new task <slug> --project <p>`、子は `--parent <タスク>`（プロジェクトも親から）、人のタスクは `--owner human`、見出しは `--title`。日付付きの slug を渡すとその日付で作る |
+| タスクを作る | `desk new task <slug> --project <p>`、子は `--parent <タスク>`（プロジェクトも親から）、人が要るタスクは `--needs-human`、見出しは `--title`。日付付きの slug を渡すとその日付で作る |
 | 文書などを作る | `desk new artifact <slug> --parent <タスク>`、`desk new knowledge <slug> [--project <p>]`、`desk new material <slug> --project <p>` など |
-| 一覧 | `desk ls task --where status=inprogress --fields name,status,now,modified`、`desk ls task --where owner=human --where status~todo,inprogress`、`desk ls material --where knowledge=[]`、`desk ls inbox` |
+| 一覧 | `desk ls task --where status=inprogress --fields name,status,now,modified`、`desk ls task --where needs_human=true --where status~todo,inprogress`、`desk ls material --where knowledge=[]`、`desk ls inbox` |
 | 段 0 | `desk ls principle --project <p> --level 1`、`desk ls knowledge --project <p> --level 0` |
 | 読む | `desk read <パス>`（全体）、`--level 0`（概要）、`--level 2`（指す先まで）、`--outline`、`--section 目的,いま,決まり` |
 | 関係をたどる | `desk graph <パス> --in`（指されているもの）、`--out`、`--via parent,depends_on,tasks,principle,sources,body`、`--depth all`、`--format tree|paths|dot` |

@@ -86,8 +86,8 @@ func exists(root, rel string) bool {
 
 func taskDoc(status, extraFM, title string) string {
 	fm := "status: " + status + "\n"
-	if !strings.Contains(extraFM, "owner:") {
-		fm += "owner: ai\n"
+	if !strings.Contains(extraFM, "needs_human:") {
+		fm += "needs_human: false\n"
 	}
 	if extraFM != "" {
 		fm += extraFM + "\n"

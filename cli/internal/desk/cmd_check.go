@@ -378,7 +378,7 @@ func (c *checker) checkShape(d *Doc) {
 		return
 	}
 	want := TaskSections
-	if d.Owner() == "human" {
+	if d.NeedsHuman() {
 		want = HumanTaskSections
 	}
 	h2 := d.H2()
@@ -842,7 +842,7 @@ func printRules(w io.Writer) {
 			fmt.Fprintf(w, "    %s: %s\n", k.Name, strings.Join(a, "。"))
 		}
 		if r.Kind == KindTask {
-			fmt.Fprintf(w, "  必須の節: %s（owner: human は %s）。「%s」の節は最後で追記だけ\n", strings.Join(TaskSections, "・"), strings.Join(HumanTaskSections, "・"), LogSection)
+			fmt.Fprintf(w, "  必須の節: %s（needs_human: true は %s）。「%s」の節は最後で追記だけ\n", strings.Join(TaskSections, "・"), strings.Join(HumanTaskSections, "・"), LogSection)
 		} else if len(r.Sections) > 0 {
 			fmt.Fprintf(w, "  desk new が書く節: %s\n", strings.Join(r.Sections, "・"))
 		}

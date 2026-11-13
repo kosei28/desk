@@ -369,8 +369,8 @@ func (d *Doc) Now() string {
 // Status は status（無ければ空）。
 func (d *Doc) Status() string { return d.Str("status") }
 
-// Owner は owner（無ければ空）。
-func (d *Doc) Owner() string { return d.Str("owner") }
+// NeedsHuman は needs_human が true か。
+func (d *Doc) NeedsHuman() bool { return d.Str("needs_human") == "true" }
 
 // SectionRange は見出しの行と、節の終わり（次の同じか浅い見出しの行。無ければファイルの終わり）を返す。
 func (d *Doc) SectionRange(name string) (int, int, bool) {

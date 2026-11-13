@@ -120,7 +120,7 @@ func rootReadme(root string) string {
 		"    ├── misc/      # どのプロジェクトにも属さないタスク\n" +
 		"    └── <project>/ # プロジェクト（tasks/・artifacts/・wiki/・inbox/・library/ など）\n" +
 		"```\n\n" +
-		"ディレクトリは要るときに作る。動いているタスクや人宛ての一覧は手で書かず、`desk ls` で出す（例: `desk ls task --where owner=human --where status~todo,inprogress`）。\n\n" +
+		"ディレクトリは要るときに作る。動いているタスクや人宛ての一覧は手で書かず、`desk ls` で出す（例: `desk ls task --where needs_human=true --where status~todo,inprogress`）。\n\n" +
 		"## 人向けの決まり\n\n" +
 		"- どこに書いてもよい\n" +
 		"- 迷ったら `inbox/` に書く（プロジェクトが分からなければ `projects/misc/inbox/`）\n" +
@@ -139,10 +139,10 @@ func cmdNew(e *env, args []string) error {
 	fs := newFlags("new", e)
 	project := fs.String("project", "", "プロジェクト")
 	parent := fs.String("parent", "", "親タスク（task）か、文書のタスク（artifact の tasks）")
-	owner := fs.String("owner", "", "task の owner（ai か human）")
+	needsHuman := fs.Bool("needs-human", false, "task に needs_human: true を書く（人の判断か作業が要る）")
 	title := fs.String("title", "", "見出し（省略は slug）")
 	fs.Usage = func() {
-		fmt.Fprintln(e.stderr, "使い方: desk new project <名前>\n       desk new <種類> <slug> [--project <名前>] [--parent <タスク>] [--owner human] [--title <見出し>]")
+		fmt.Fprintln(e.stderr, "使い方: desk new project <名前>\n       desk new <種類> <slug> [--project <名前>] [--parent <タスク>] [--needs-human] [--title <見出し>]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -180,11 +180,8 @@ func cmdNew(e *env, args []string) error {
 	if rule == nil {
 		return usageErr("知らない種類 %q（task artifact inbox library principle knowledge material wiki project）", kind)
 	}
-	if *owner != "" && kind != KindTask {
-		return usageErr("--owner は task だけ")
-	}
-	if *owner != "" && !contains(Owners, *owner) {
-		return usageErr("--owner は ai か human")
+	if *needsHuman && kind != KindTask {
+		return usageErr("--needs-human は task だけ")
 	}
 	if *parent != "" && kind != KindTask && kind != KindArtifact {
 		return usageErr("--parent は task（parent）と artifact（tasks）だけ")
@@ -261,15 +258,11 @@ func cmdNew(e *env, args []string) error {
 	sections := rule.Sections
 	switch kind {
 	case KindTask:
-		o := *owner
-		if o == "" {
-			o = "ai"
-		}
-		fm = []string{"status: todo", "owner: " + o}
+		fm = []string{"status: todo", fmt.Sprintf("needs_human: %t", *needsHuman)}
 		if parentDoc != nil {
 			fm = append(fm, "parent: "+RelPath(path.Dir(rel), parentDoc.Path))
 		}
-		if o == "human" {
+		if *needsHuman {
 			sections = HumanTaskSections
 		}
 	case KindArtifact:

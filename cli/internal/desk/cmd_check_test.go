@@ -41,7 +41,7 @@ func TestCheckFindings(t *testing.T) {
 	write(t, root, p+"tasks/no-date.md", taskDoc("todo", "", "日付なし"))
 	write(t, root, p+"tasks/2026-11-01-bad-status.md", taskDoc("doing", "", "決まりの外の status"))
 	write(t, root, p+"tasks/2026-11-02-no-fm.md", "# frontmatter なし\n")
-	write(t, root, p+"tasks/2026-11-03-short.md", "---\nstatus: todo\nowner: ai\n---\n\n# 節が足りない\n\n## ログ\n- a\n\n## 目的\nx\n")
+	write(t, root, p+"tasks/2026-11-03-short.md", "---\nstatus: todo\nneeds_human: false\n---\n\n# 節が足りない\n\n## ログ\n- a\n\n## 目的\nx\n")
 	write(t, root, p+"tasks/2026-11-04-closed.md", taskDoc("done", "", "閉じたのに外"))
 	write(t, root, p+"archive/tasks/2026-11-05-reopened.md", taskDoc("todo", "", "動いているのに中"))
 	write(t, root, p+"tasks/2026-11-06-started.md", taskDoc("inprogress", "depends_on: [2026-11-07-dep.md]", "依存が終わる前に着手"))
@@ -67,8 +67,9 @@ func TestCheckFindings(t *testing.T) {
 	write(t, root, p+"tasks/2026-11-16-b.md", taskDoc("todo", "depends_on: [2026-11-16-a.md]", "循環 b"))
 	write(t, root, p+"tasks/2026-11-17-a.md", taskDoc("todo", "parent: 2026-11-17-b.md", "親の循環 a"))
 	write(t, root, p+"tasks/2026-11-17-b.md", taskDoc("todo", "parent: 2026-11-17-a.md", "親の循環 b"))
-	write(t, root, p+"tasks/2026-11-18-no-owner.md", "---\nstatus: todo\n---\n\n# owner が無い\n\n## 目的\nx\n\n## いま\nx\n\n## 成果物\nx\n\n## 現在地\nx\n\n## 決まり\nx\n\n## 手順\nx\n")
+	write(t, root, p+"tasks/2026-11-18-no-needs-human.md", "---\nstatus: todo\n---\n\n# needs_human が無い\n\n## 目的\nx\n\n## いま\nx\n\n## 成果物\nx\n\n## 現在地\nx\n\n## 決まり\nx\n\n## 手順\nx\n")
 	write(t, root, p+"tasks/2026-11-19-old-status.md", taskDoc("active", "", "前の語彙"))
+	write(t, root, p+"tasks/2026-11-20-bad-needs-human.md", taskDoc("todo", "needs_human: human", "決まりの外の needs_human"))
 
 	fs, code := checkJSON(t)
 	if code != 1 {
@@ -96,8 +97,9 @@ func TestCheckFindings(t *testing.T) {
 		{p + "tasks/2026-11-16-b.md", "depends_on が循環している"},
 		{p + "tasks/2026-11-17-a.md", "parent が循環している"},
 		{p + "tasks/2026-11-17-b.md", "parent が循環している"},
-		{p + "tasks/2026-11-18-no-owner.md", "owner が無い"},
+		{p + "tasks/2026-11-18-no-needs-human.md", "needs_human が無い"},
 		{p + "tasks/2026-11-19-old-status.md", `status の値 "active"`},
+		{p + "tasks/2026-11-20-bad-needs-human.md", `needs_human の値 "human"`},
 		{p + "artifacts/links.md", "gone.md の先が無い"},
 		{p + "artifacts/links.md", "/tmp/x.md が相対パスでない"},
 		{p + "artifacts/links.md", "[[名前]] が名前だけ"},
@@ -143,13 +145,13 @@ func TestCheckFix(t *testing.T) {
 	write(t, root, p+"artifacts/no-tasks.md", "---\ntitle: x\n---\n# tasks が無い\n")
 
 	out, _, _ := run(t, "check", "--fix")
-	if c := read(t, root, p+"tasks/2026-11-02-no-fm.md"); !strings.HasPrefix(c, "---\nstatus:\nowner:\n---\n\n# 人が書いたタスク") {
+	if c := read(t, root, p+"tasks/2026-11-02-no-fm.md"); !strings.HasPrefix(c, "---\nstatus:\nneeds_human:\n---\n\n# 人が書いたタスク") {
 		t.Errorf("frontmatter を足していない（値は埋めない）:\n%s", c)
 	}
-	// status と owner の値は手で書くので残る
+	// status と needs_human の値は手で書くので残る
 	fs, code := checkJSON(t)
-	if code != 1 || len(fs) != 2 || !hasFinding(fs, p+"tasks/2026-11-02-no-fm.md", "status が空") || !hasFinding(fs, p+"tasks/2026-11-02-no-fm.md", "owner が空") {
-		t.Errorf("--fix の後に残るのが status・owner の空だけでない（code=%d）: %+v", code, fs)
+	if code != 1 || len(fs) != 2 || !hasFinding(fs, p+"tasks/2026-11-02-no-fm.md", "status が空") || !hasFinding(fs, p+"tasks/2026-11-02-no-fm.md", "needs_human が空") {
+		t.Errorf("--fix の後に残るのが status・needs_human の空だけでない（code=%d）: %+v", code, fs)
 	}
 	moved := p + "archive/tasks/2026-11-04-closed.md"
 	if !exists(root, moved) || exists(root, p+"tasks/2026-11-04-closed.md") {

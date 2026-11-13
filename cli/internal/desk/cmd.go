@@ -17,7 +17,7 @@ const usage = `desk — 作業ドキュメントのツリーの形を扱う補�
 作る:
   desk init [<パス>]
   desk new project <名前>
-  desk new <種類> <slug> [--project <名前>] [--parent <タスク>] [--owner human] [--title <見出し>]
+  desk new <種類> <slug> [--project <名前>] [--parent <タスク>] [--needs-human] [--title <見出し>]
 引く:
   desk ls [<種類>] [--name <名前>] [--project <名前>] [--archived] [--where <キー><演算子><値>]...
           [--modified-before <日数>] [--modified-after <日数>] [--fields <列>,...] [--json | --paths | --level 0|1|2]

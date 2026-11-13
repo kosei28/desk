@@ -29,8 +29,8 @@ func TestParseDocFrontmatterAndLinks(t *testing.T) {
 	if !d.HasFM || d.FMErr != "" {
 		t.Fatalf("frontmatter を読めない: %q", d.FMErr)
 	}
-	if d.Status() != "todo" || d.Owner() != "" {
-		t.Errorf("status=%q owner=%q", d.Status(), d.Owner())
+	if d.Status() != "todo" || d.NeedsHuman() {
+		t.Errorf("status=%q needs_human=%v", d.Status(), d.NeedsHuman())
 	}
 	if got := d.List("depends_on"); !reflect.DeepEqual(got, []string{"2026-10-14-shopping-list.md", "2026-10-20-sync.md"}) {
 		t.Errorf("depends_on = %v", got)

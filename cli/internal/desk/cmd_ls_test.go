@@ -9,10 +9,10 @@ import (
 func TestLsFilters(t *testing.T) {
 	root := recipeTree(t)
 	write(t, root, "projects/recipe-app/tasks/2026-11-10-decide-paper-size.md",
-		"---\nstatus: todo\nowner: human\nparent: 2026-11-09-printable-menu.md\n---\n\n# 用紙の大きさを決める\n\n## 目的\n選ぶ。\n\n## 成果物\n- なし\n")
+		"---\nstatus: todo\nneeds_human: true\nparent: 2026-11-09-printable-menu.md\n---\n\n# 用紙の大きさを決める\n\n## 目的\n選ぶ。\n\n## 成果物\n- なし\n")
 	write(t, root, "projects/recipe-app/archive/tasks/2026-09-07-favorites.md", taskDoc("done", "", "お気に入り"))
 
-	out := mustRun(t, "ls", "task", "--where", "owner=human", "--paths")
+	out := mustRun(t, "ls", "task", "--where", "needs_human=true", "--paths")
 	if strings.TrimSpace(out) != "projects/recipe-app/tasks/2026-11-10-decide-paper-size.md" {
 		t.Errorf("人宛て:\n%s", out)
 	}

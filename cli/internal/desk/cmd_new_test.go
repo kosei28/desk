@@ -116,15 +116,15 @@ func TestNewProjectAndTasks(t *testing.T) {
 		t.Errorf("作ったパスを出さない: %q", out)
 	}
 	c := read(t, root, parent)
-	for _, want := range []string{"status: todo", "owner: ai", "# 献立プランナー", "## 目的", "## いま", "## 成果物", "## 現在地", "## 決まり", "## 手順"} {
+	for _, want := range []string{"status: todo", "needs_human: false", "# 献立プランナー", "## 目的", "## いま", "## 成果物", "## 現在地", "## 決まり", "## 手順"} {
 		if !strings.Contains(c, want) {
 			t.Errorf("タスクに %q が無い:\n%s", want, c)
 		}
 	}
 
-	mustRun(t, "new", "task", "2026-11-10-decide-paper-size", "--parent", "2026-09-07-meal-planner", "--owner", "human")
+	mustRun(t, "new", "task", "2026-11-10-decide-paper-size", "--parent", "2026-09-07-meal-planner", "--needs-human")
 	child := read(t, root, "projects/recipe-app/tasks/2026-11-10-decide-paper-size.md")
-	if !strings.Contains(child, "parent: 2026-09-07-meal-planner.md") || !strings.Contains(child, "owner: human") || strings.Contains(child, "## 現在地") {
+	if !strings.Contains(child, "parent: 2026-09-07-meal-planner.md") || !strings.Contains(child, "needs_human: true") || strings.Contains(child, "## 現在地") {
 		t.Errorf("人の子タスクの形が違う:\n%s", child)
 	}
 

@@ -10,7 +10,7 @@ func TestReadLevels(t *testing.T) {
 	task := "projects/recipe-app/tasks/2026-11-09-printable-menu.md"
 
 	out := mustRun(t, "read", task, "--level", "0")
-	if !strings.Contains(out, "[task · recipe-app · inprogress · ai]") || !strings.Contains(out, "いま: いま。") {
+	if !strings.Contains(out, "[task · recipe-app · inprogress]") || !strings.Contains(out, "いま: いま。") {
 		t.Errorf("段 0:\n%s", out)
 	}
 

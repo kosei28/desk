@@ -203,7 +203,9 @@ func Summary(d *Doc) []string {
 		if s := d.Status(); s != "" {
 			tags = append(tags, s)
 		}
-		tags = append(tags, d.Owner())
+		if d.NeedsHuman() {
+			tags = append(tags, "needs_human")
+		}
 	}
 	lines := []string{d.Path + "  [" + strings.Join(tags, " · ") + "]"}
 	if !d.IsMD {

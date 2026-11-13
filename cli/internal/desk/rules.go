@@ -48,10 +48,10 @@ type KindRule struct {
 }
 
 var (
-	Statuses = []string{"backlog", "todo", "inprogress", "done", "dropped"}
-	Owners   = []string{"ai", "human"}
+	Statuses   = []string{"backlog", "todo", "inprogress", "done", "dropped"}
+	NeedsHuman = []string{"false", "true"}
 
-	// タスクに要る節（owner: ai）。owner: human は目的と成果物。
+	// タスクに要る節（needs_human: false）。needs_human: true は目的と成果物。
 	TaskSections      = []string{"目的", "いま", "成果物", "現在地", "決まり", "手順"}
 	HumanTaskSections = []string{"目的", "成果物"}
 )
@@ -77,7 +77,7 @@ var Rules = []KindRule{
 		Desc: "タスク。1 タスク 1 ファイル。頭の 3 節（目的・いま・成果物）は人向け、現在地・決まり・手順は AI 向け、最後のログの節は追記だけ",
 		Keys: []KeyRule{
 			{Name: "status", Required: true, NonEmpty: true, Enum: Statuses, Note: "backlog はやるか決めていない・いつか、todo はやると決めた・未着手、inprogress は着手している"},
-			{Name: "owner", Required: true, NonEmpty: true, Enum: Owners},
+			{Name: "needs_human", Required: true, NonEmpty: true, Enum: NeedsHuman, Note: "true は人の判断か作業が要る（確認・人がやる作業）"},
 			{Name: "parent", Link: true, Note: "親タスク"},
 			{Name: "depends_on", List: true, Link: true, Note: "待っているタスク"},
 			{Name: "repo", Note: "~ からのパス"},

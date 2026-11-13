@@ -54,10 +54,6 @@ func fieldValues(t *Tree, d *Doc, key string) []string {
 		return one(d.Now())
 	case "modified":
 		return one(modifiedOf(t, d))
-	case "owner":
-		if d.Kind == KindTask {
-			return one(d.Owner())
-		}
 	}
 	if !d.HasKey(key) {
 		return nil
@@ -152,7 +148,7 @@ func defaultFields(kinds []Kind) []string {
 	}
 	switch kinds[0] {
 	case KindTask:
-		return []string{"path", "status", "owner", "now"}
+		return []string{"path", "status", "needs_human", "now"}
 	case KindArtifact:
 		return []string{"path", "tasks", "title"}
 	case KindWiki, KindPrinciple, KindKnowledge:
