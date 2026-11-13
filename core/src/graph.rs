@@ -48,7 +48,7 @@ pub fn edges_via(edges: Vec<Edge>, via: &[String]) -> Vec<Edge> {
 
 impl Tree {
     /// start から dirs の向きに順にたどる（枝の途中で向きは変えない）。max_depth が None なら終わりまで。
-    /// 辺は via で絞り、1 つの点から出る辺はキー、from+to の順に並べる。
+    /// 辺は via で絞り、1 つの点から出る辺はキー、from、to の順に並べる。
     pub fn walk(
         &self,
         start: &str,
@@ -64,12 +64,7 @@ impl Tree {
             ins.entry(&e.to).or_default().push(e);
         }
         for list in outs.values_mut().chain(ins.values_mut()) {
-            // Go の sort.Slice は安定でないが、同じ (key, from+to) の辺は無いので順は決まる
-            list.sort_by(|a, b| {
-                a.key
-                    .cmp(&b.key)
-                    .then_with(|| (a.from.clone() + &a.to).cmp(&(b.from.clone() + &b.to)))
-            });
+            list.sort_by(|a, b| (&a.key, &a.from, &a.to).cmp(&(&b.key, &b.from, &b.to)));
         }
         let mut w = Walker {
             outs,
