@@ -6,12 +6,14 @@
   }
 }
 
+/* 見出しの和文。かな・漢字・和文の約物と全角だけを受け持ち、欧文は後ろの ui-rounded（SF Pro Rounded）に回す */
 @font-face {
   font-family: "Zen Maru Gothic";
   src: url("./assets/fonts/ZenMaruGothic-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
+  unicode-range: U+3000-30FF, U+31F0-31FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
 }
 
 html,
