@@ -340,6 +340,37 @@ pub fn clean(p: &str) -> String {
     }
 }
 
+/// from_dir から to への相対パス（どちらもルートからのパス。Go の filepath.Rel）。
+pub fn rel_path(from_dir: &str, to: &str) -> String {
+    let parts = |p: &str| -> Vec<String> {
+        let c = clean(p);
+        if c == "." {
+            Vec::new()
+        } else {
+            c.split('/').map(str::to_string).collect()
+        }
+    };
+    let (from, to) = (parts(from_dir), parts(to));
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let mut out: Vec<&str> = vec![".."; from.len() - common];
+    out.extend(to[common..].iter().map(String::as_str));
+    if out.is_empty() {
+        ".".to_string()
+    } else {
+        out.join("/")
+    }
+}
+
+/// リンクに書く文字（空白はエスケープし、アンカーを付ける）。
+pub fn link_text(rel: &str, anchor: &str) -> String {
+    let s = rel.replace(' ', "%20");
+    if anchor.is_empty() {
+        s
+    } else {
+        format!("{s}#{anchor}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,6 +397,13 @@ mod tests {
         assert_eq!(join(&[".", "x.md"]), "x.md");
         assert_eq!(base("a/b.md"), "b.md");
         assert_eq!(base("a/"), "a");
+        assert_eq!(
+            rel_path("projects/a/tasks", "projects/a/artifacts/x.md"),
+            "../artifacts/x.md"
+        );
+        assert_eq!(rel_path(".", "x.md"), "x.md");
+        assert_eq!(rel_path("a", "a"), ".");
+        assert_eq!(link_text("a b.md", "節"), "a%20b.md#節");
     }
 
     #[test]

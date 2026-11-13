@@ -432,3 +432,107 @@ pub fn link_keys(kind: Option<Kind>) -> Vec<&'static str> {
         Some(r) => r.keys.iter().filter(|k| k.link).map(|k| k.name).collect(),
     }
 }
+
+/// プロジェクトの直下に置いてよい名前。
+pub fn project_entries() -> Vec<&'static str> {
+    let mut out = vec!["README.md", "assets", ARCHIVE_DIR];
+    out.extend(RULES.iter().filter(|r| r.in_project).map(|r| r.dir));
+    out
+}
+
+/// 実装している形の一覧（`desk check --rules` の出力そのもの）。
+pub fn describe() -> String {
+    let mut w = String::new();
+    let mut line = |s: &str| {
+        w.push_str(s);
+        w.push('\n');
+    };
+    line("CLI が実装している形（正本はスキル desk。食い違えばスキルが正しい）");
+    line("");
+    line(&format!(
+        "ルートに置く名前: {MARKER_FILE}、{}",
+        ROOT_RESERVED.join("、")
+    ));
+    line(&format!(
+        "プロジェクト: {PROJECTS_DIR}/<名前>/（どこにも属さないものは {PROJECTS_DIR}/{MISC_PROJECT}/）。直下に置く名前: {}",
+        project_entries().join("、")
+    ));
+    line(&format!(
+        "archive: プロジェクトの {ARCHIVE_DIR}/ は {ARCHIVE_DIR}/tasks/・{ARCHIVE_DIR}/artifacts/（元と同じ形）。プロジェクトごとは {ARCHIVE_DIR}/{PROJECTS_DIR}/<名前>/"
+    ));
+    line(
+        "リンク: 本文も frontmatter も、そのファイルからの相対パス。絶対パス・~ 始まり・名前だけは書かない",
+    );
+    line(
+        "名前: <slug>.md（slug は英小文字・数字・ハイフン）。同じ種類の中（archive/ も含めて）で一意",
+    );
+    line("");
+    for r in RULES {
+        let mut place = Vec::new();
+        if r.in_root {
+            place.push(format!("{}/", r.dir));
+        }
+        if r.in_project {
+            place.push(format!("{PROJECTS_DIR}/<p>/{}/", r.dir));
+        }
+        let mut notes = vec![if r.nested {
+            "中は入れ子にしてよい".to_string()
+        } else {
+            "中はフラット".to_string()
+        }];
+        if r.assets {
+            notes.push(format!("静的ファイルは {}/assets/", r.dir));
+        }
+        if r.archivable {
+            notes.push(format!("終わったら {ARCHIVE_DIR}/{}/", r.dir));
+        }
+        line(&format!("{} — {}", r.kind, r.desc));
+        line(&format!(
+            "  置き場所: {}（{}）",
+            place.join("、"),
+            notes.join("。")
+        ));
+        line(if r.dated {
+            "  名前: YYYY-MM-DD-<slug>.md（作った日）"
+        } else {
+            "  名前: <slug>.md"
+        });
+        line(&format!(
+            "  frontmatter: {}",
+            if r.need_fm { "要る" } else { "任意" }
+        ));
+        for k in r.keys {
+            let mut a: Vec<String> = Vec::new();
+            for (on, s) in [
+                (k.required, "必須"),
+                (k.non_empty, "空にしない"),
+                (k.list, "配列"),
+                (k.link, "相対パス"),
+            ] {
+                if on {
+                    a.push(s.to_string());
+                }
+            }
+            if !k.values.is_empty() {
+                a.push(k.values.join(" | "));
+            }
+            if k.date {
+                a.push("YYYY-MM-DD".to_string());
+            }
+            if !k.note.is_empty() && k.note != "必須" {
+                a.push(k.note.to_string());
+            }
+            line(&format!("    {}: {}", k.name, a.join("。")));
+        }
+        if r.kind == Kind::Task {
+            line(&format!(
+                "  必須の節: {}（needs_human: true は {}）。「{LOG_SECTION}」の節は最後で追記だけ",
+                TASK_SECTIONS.join("・"),
+                HUMAN_TASK_SECTIONS.join("・")
+            ));
+        } else if !r.sections.is_empty() {
+            line(&format!("  desk new が書く節: {}", r.sections.join("・")));
+        }
+    }
+    w
+}

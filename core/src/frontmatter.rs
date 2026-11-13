@@ -34,6 +34,8 @@ pub struct Scalar {
 pub struct Field {
     pub key: String,
     pub value: Value,
+    /// 値の始まりの行（ファイルの行、0 始まり）。値を書いていなければキーの行
+    pub line: usize,
     /// 値の中のスカラー（null を除く）。配列なら要素ごと
     pub scalars: Vec<Scalar>,
 }
@@ -118,10 +120,31 @@ impl std::fmt::Display for FmError {
 
 /// YAML のノード（読むのに要る分だけ）。
 enum Node {
-    Scalar { scalar: Scalar, null: bool },
-    Seq(Vec<Node>),
-    Map(Vec<(Node, Node)>),
-    Alias,
+    Scalar {
+        scalar: Scalar,
+        null: bool,
+    },
+    Seq {
+        line: usize,
+        items: Vec<Node>,
+    },
+    Map {
+        line: usize,
+        pairs: Vec<(Node, Node)>,
+    },
+    Alias {
+        line: usize,
+    },
+}
+
+impl Node {
+    /// 始まりの行（ファイルの行、0 始まり）。
+    fn line(&self) -> usize {
+        match self {
+            Node::Scalar { scalar, .. } => scalar.line,
+            Node::Seq { line, .. } | Node::Map { line, .. } | Node::Alias { line } => *line,
+        }
+    }
 }
 
 /// `---` と `---` の間の YAML（ファイルの 2 行目から）を読む。
@@ -136,7 +159,7 @@ pub fn parse(text: &str) -> Result<Frontmatter, FmError> {
         return Ok(Frontmatter::default());
     };
     let pairs = match root {
-        Node::Map(pairs) => pairs,
+        Node::Map { pairs, .. } => pairs,
         Node::Scalar { null: true, .. } => return Ok(Frontmatter::default()),
         _ => return Err(FmError::NotMapping),
     };
@@ -147,10 +170,11 @@ pub fn parse(text: &str) -> Result<Frontmatter, FmError> {
                 Node::Scalar { scalar, .. } => scalar.value,
                 _ => String::new(),
             };
+            let line = v.line();
             let (value, scalars) = match v {
                 Node::Scalar { null: true, .. } => (Value::Null, Vec::new()),
                 Node::Scalar { scalar, .. } => (Value::Str(scalar.value.clone()), vec![scalar]),
-                Node::Seq(items) => {
+                Node::Seq { items, .. } => {
                     let scalars: Vec<Scalar> = items
                         .into_iter()
                         .filter_map(|n| match n {
@@ -166,11 +190,12 @@ pub fn parse(text: &str) -> Result<Frontmatter, FmError> {
                         scalars,
                     )
                 }
-                Node::Map(_) | Node::Alias => (Value::Null, Vec::new()),
+                Node::Map { .. } | Node::Alias { .. } => (Value::Null, Vec::new()),
             };
             Field {
                 key,
                 value,
+                line,
                 scalars,
             }
         })
@@ -210,6 +235,8 @@ impl<'a> Reader<'a> {
     }
 
     fn node(&mut self, ev: Event<'a>, span: Span) -> Result<Node, ScanError> {
+        // span の行は 1 始まり。YAML の 1 行目はファイルの 2 行目（0 始まりで 1）なので、そのままファイルの行になる
+        let line = span.start.line();
         Ok(match ev {
             Event::Scalar(mut value, style, _, tag) => {
                 // 改行で終わらない入力の終わりまで続くブロック（| や >）は、終わりに改行を足さない
@@ -231,8 +258,7 @@ impl<'a> Reader<'a> {
                 Node::Scalar {
                     scalar: Scalar {
                         value: value.into_owned(),
-                        // span の行は 1 始まり。YAML の 1 行目はファイルの 2 行目（0 始まりで 1）なので、そのままファイルの行になる
-                        line: span.start.line(),
+                        line,
                         column: span.start.col(),
                         quoted: matches!(
                             style,
@@ -251,7 +277,7 @@ impl<'a> Reader<'a> {
                     }
                     items.push(self.node(ev, span)?);
                 }
-                Node::Seq(items)
+                Node::Seq { line, items }
             }
             Event::MappingStart(..) => {
                 let mut pairs = Vec::new();
@@ -265,11 +291,11 @@ impl<'a> Reader<'a> {
                     let v = self.node(ev, span)?;
                     pairs.push((k, v));
                 }
-                Node::Map(pairs)
+                Node::Map { line, pairs }
             }
-            Event::Alias(_) => Node::Alias,
+            Event::Alias(_) => Node::Alias { line },
             // 文書の途中で終わる（パーサーが先にエラーを返すので、ふつうは来ない）
-            _ => Node::Alias,
+            _ => Node::Alias { line },
         })
     }
 }
@@ -297,6 +323,17 @@ mod tests {
         assert_eq!(
             (deps[1].line, deps[1].column, deps[1].quoted),
             (5, 13, true)
+        );
+    }
+
+    #[test]
+    fn value_lines() {
+        // ファイルの 1 行目が --- なので、YAML の 1 行目はファイルの行 1（0 始まり）
+        let fm = parse("a: x\n\nb:\nc:\n  - p\nd: [q]\ne: {f: g}\n").unwrap();
+        let line = |k: &str| fm.get(k).unwrap().line;
+        assert_eq!(
+            [line("a"), line("b"), line("c"), line("d"), line("e")],
+            [1, 3, 5, 6, 7]
         );
     }
 
