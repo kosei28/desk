@@ -11,7 +11,13 @@ publish = false
 tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
+# 読むだけなので feature write は有効にしない
+desk-core = { path = "../../core" }
+notify-debouncer-mini = "0.7.0"
+serde = "1.0.229"
 tauri = { version = "2.12.5", features = [] }
+# フォルダーを選ぶ窓は Rust の側から開く。webview には dialog の権限を渡さない
+tauri-plugin-dialog = "2.8.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # AppKit を呼ぶ（タイトルバーのダブルクリック・全画面から戻る間の信号機）。版と feature は tao の使うものの中に収める
@@ -22,5 +28,9 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["s
 
 # ワークスペースは unsafe を forbid にしている。このクレートは AppKit・CoreFoundation を呼ぶモジュール
 # （src/titlebar.rs・src/traffic_lights.rs・src/zoom.rs）の中でだけ unsafe を許したいので、deny にして、そこで allow する
+[dev-dependencies]
+serde_json = "1.0.154"
+tempfile = "3.27.0"
+
 [lints.rust]
 unsafe_code = "deny"
