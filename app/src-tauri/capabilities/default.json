@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "メインのウィンドウ。帯でウィンドウを動かすのだけを許す（帯のダブルクリックはアプリのコマンド titlebar_double_click）",
+  "windows": ["main"],
+  "permissions": ["core:window:allow-start-dragging"]
+}

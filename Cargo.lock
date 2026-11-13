@@ -665,6 +665,7 @@ dependencies = [
 name = "desk-app"
 version = "0.1.0"
 dependencies = [
+ "objc2",
  "tauri",
  "tauri-build",
 ]
