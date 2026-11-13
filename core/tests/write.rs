@@ -1,5 +1,5 @@
 //! 書く側のテスト（Go の cmd_new_test・cmd_move_test・cmd_check_test の --fix のうち、出力の形によらないところを
-//! core の API で見る）。出力の形は CLI の段（R4）で移す。
+//! core の API で見る）。出力の形は cli/tests で見る。
 
 #![cfg(feature = "write")]
 

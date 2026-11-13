@@ -3,9 +3,6 @@
 // テストのファイルごとに使うものが違う
 #![allow(dead_code)]
 
-pub mod cli;
-pub mod go;
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -335,16 +332,6 @@ pub fn edge_tree() -> Fixture {
         )
         .unwrap();
     }
-    f
-}
-
-/// Go と読み方を変えたところ（差分テストの例外）を集めたツリー。
-pub fn exception_tree() -> Fixture {
-    let f = Fixture::new();
-    f.write(
-        "projects/alpha/library/2026-11-01-typed.md",
-        "---\ntags: [2026, true, null, 1.5, rust]\nmeta: {a: b}\nnested: [[a], b]\n---\n\n# 型の付いた値\n",
-    );
     f
 }
 
