@@ -74,7 +74,7 @@ const (
 var Rules = []KindRule{
 	{
 		Kind: KindTask, Dir: "tasks", InProject: true, Dated: true, Archivable: true, NeedFM: true,
-		Desc: "タスク。1 タスク 1 ファイル。頭の 3 節（目的・いま・成果物）は人向け、現在地・決まり・手順は AI 向け、最後のログの節は追記だけ",
+		Desc: "タスク。1 タスク 1 ファイル。節は目的・いま・成果物・現在地・決まり・手順で、最後のログの節は追記だけ",
 		Keys: []KeyRule{
 			{Name: "status", Required: true, NonEmpty: true, Enum: Statuses, Note: "backlog はやるか決めていない・いつか、todo はやると決めた・未着手、inprogress は着手している"},
 			{Name: "needs_human", Required: true, NonEmpty: true, Enum: NeedsHuman, Note: "true は人の判断か作業が要る（確認・人がやる作業）"},
@@ -89,7 +89,7 @@ var Rules = []KindRule{
 	},
 	{
 		Kind: KindArtifact, Dir: "artifacts", InProject: true, Assets: true, Archivable: true, NeedFM: true,
-		Desc: "タスクの文書とメモ（整理した文書か溜めるメモ。ファイルごとに決まる）。タスクと一緒に役目を終える",
+		Desc: "タスクの文書。タスクと一緒に役目を終える",
 		Keys: []KeyRule{
 			{Name: "tasks", List: true, Link: true, Required: true, Note: "どのタスクのための文書か"},
 		},

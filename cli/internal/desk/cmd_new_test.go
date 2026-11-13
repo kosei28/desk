@@ -23,7 +23,7 @@ func TestInitCreatesTree(t *testing.T) {
 		}
 	}
 	if !strings.Contains(read(t, root, "README.md"), "projects/misc/inbox/") {
-		t.Error("README に人向けの受け箱の場所が無い")
+		t.Error("README に人が書く受け箱の場所が無い")
 	}
 	log, err := exec.Command("git", "-C", root, "log", "--format=%s").Output()
 	if err != nil || strings.TrimSpace(string(log)) != "docs: desk を作る" {

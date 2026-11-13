@@ -121,7 +121,7 @@ func rootReadme(root string) string {
 		"    └── <project>/ # プロジェクト（tasks/・artifacts/・wiki/・inbox/・library/ など）\n" +
 		"```\n\n" +
 		"ディレクトリは要るときに作る。動いているタスクや人宛ての一覧は手で書かず、`desk ls` で出す（例: `desk ls task --where needs_human=true --where status~todo,inprogress`）。\n\n" +
-		"## 人向けの決まり\n\n" +
+		"## 人が書くときの決まり\n\n" +
 		"- どこに書いてもよい\n" +
 		"- 迷ったら `inbox/` に書く（プロジェクトが分からなければ `projects/misc/inbox/`）\n" +
 		"- コミットはしなくてよい\n\n" +
