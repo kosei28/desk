@@ -41,7 +41,7 @@ pub struct Doc {
     pub links: Vec<Link>,
 }
 
-/// Go の正規表現の `\s`（ASCII の空白）。Rust の `\s` は Unicode の空白も含むので、使わない。
+/// Markdown（CommonMark）の空白。CommonMark の空白は ASCII のこれだけで、Rust の `\s` は Unicode の空白も含むので使わない。
 macro_rules! ws {
     () => {
         r"[\t\n\f\r ]"
