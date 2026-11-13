@@ -1,0 +1,24 @@
+[package]
+name = "desk-core"
+version = "0.1.0"
+description = "desk のツリーの形の解釈（CLI とアプリで共有する）"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+# 書く側（init・new・archive・mv・check --fix の計画と当て方）。CLI だけが有効にし、アプリは有効にしない。
+write = []
+
+[dependencies]
+regex = "1.13.1"
+saphyr-parser = "0.3.4"
+serde = { version = "1.0.229", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1.0.154"
+tempfile = "3.27.0"
+
+[lints]
+workspace = true
