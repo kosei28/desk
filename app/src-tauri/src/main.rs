@@ -1,4 +1,6 @@
 mod desk;
+mod external;
+mod navigation;
 mod root;
 mod titlebar;
 mod traffic_lights;
@@ -9,6 +11,7 @@ fn main() {
     zoom::keep_webview_drawing_during_zoom();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(navigation::init())
         .manage(desk::Desk::default())
         .setup(|app| {
             if let Some(window) = tauri::Manager::get_webview_window(app, "main") {
@@ -24,7 +27,8 @@ fn main() {
             titlebar::titlebar_double_click,
             desk::index,
             desk::body,
-            desk::choose_root
+            desk::choose_root,
+            external::open_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
