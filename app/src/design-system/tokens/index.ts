@@ -134,7 +134,8 @@ export const tokens = defineTokens({
     // 信号機の帯の高さ。信号機（14px）は左と上から 19px（tauri.conf.json の trafficLightPosition）で、
     // 下にも同じ 19px を取って帯の縦の中央に置く（19 + 14 + 19）
     titlebar: { value: "52px" },
-    sidebar: { value: "280px" },
+    // 左の列と右の列は同じ幅（列の間の 8px を含む）
+    sidebar: { value: "300px" },
     inspector: { value: "300px" },
     measure: { value: "40em" },
   },
