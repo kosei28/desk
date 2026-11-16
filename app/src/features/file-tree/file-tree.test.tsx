@@ -97,6 +97,29 @@ describe("FileTree", () => {
     expect(selectedRows()).toEqual([labelOf("notes.md")])
   })
 
+  it("⌘ を押しながらファイルの行を押しても、押さないときと同じに渡す。選んでいる行では何もしない", async () => {
+    const { onSelect } = renderTree("README.md")
+    const meta = vi.spyOn(MouseEvent.prototype, "metaKey", "get").mockReturnValue(true)
+    try {
+      await press("notes.md")
+      await press("notes.md")
+    } finally {
+      meta.mockRestore()
+    }
+    expect(onSelect.mock.calls).toEqual([["notes.md"]])
+    expect(selectedRows()).toEqual([labelOf("notes.md")])
+  })
+
+  it("選んでいるファイルが変わると、祖先のフォルダーを開く", async () => {
+    const select = renderTree("README.md")
+    expect(expanded("projects")).toBe("false")
+    select("projects/recipe-app/tasks/2026-11-09-printable-menu.md")
+    flush()
+    await vi.waitFor(() => expect(expanded("tasks")).toBe("true"))
+    expect(expanded("projects")).toBe("true")
+    expect(selectedRows()).toEqual([labelOf("献立を印刷できるようにする")])
+  })
+
   it("選んでいるファイルの行を押し直しても、選択を外さない", async () => {
     const { onSelect } = renderTree("README.md")
     await press("作業机")
