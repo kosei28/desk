@@ -1,6 +1,6 @@
 import { createMemo, createSignal, Show } from "solid-js"
-import { css } from "../styled-system/css"
-import { Sheet } from "./components/sheet"
+import { css, cx } from "../styled-system/css"
+import { Surface } from "./components/surface"
 import { FileTree } from "./features/file-tree/file-tree"
 import { dragRegion } from "./features/window/drag-region"
 import { sampleFiles } from "./sample-tree"
@@ -18,7 +18,7 @@ export function App() {
         height: "full",
       })}
     >
-      {/* 帯はウィンドウの幅いっぱいの層。紙はその上に載り、紙に覆われていない所（ツリーの上、紙の上と右の余白）で窓を動かす */}
+      {/* 帯はウィンドウの幅いっぱいの層。読む面はその上に載り、読む面に覆われていない所（ツリーの上、読む面の上と右の余白）で窓を動かす */}
       <div ref={dragRegion} class={css({ gridColumn: "1 / -1", gridRow: "1", zIndex: "titlebar" })} />
       <nav
         aria-label="ツリー"
@@ -36,30 +36,22 @@ export function App() {
           paddingInlineStart: "0",
         })}
       >
-        <Sheet class={css({ zIndex: "paper" })}>
+        <Surface class={cx(css({ zIndex: "surface" }), !selectedFile() && css({ alignContent: "center" }))}>
           <Show
             when={selectedFile()}
             fallback={
-              <p
-                class={css({
-                  display: "grid",
-                  placeItems: "center",
-                  height: "full",
-                  color: "fg.muted",
-                })}
-              >
+              <p class={css({ textAlign: "center", color: "fg.muted" })}>
                 ファイルを選ぶと、ここに開く
               </p>
             }
           >
             {(file) => (
-              <header class={css({ display: "flex", flexDirection: "column", gap: "2", maxWidth: "measure" })}>
-                <p class={css({ textStyle: "mono", color: "fg.muted" })}>{file().path}</p>
-                <h1 class={css({ textStyle: "display" })}>{file().title}</h1>
+              <header>
+                <h1 class={css({ textStyle: "title" })}>{file().title}</h1>
               </header>
             )}
           </Show>
-        </Sheet>
+        </Surface>
       </div>
     </div>
   )

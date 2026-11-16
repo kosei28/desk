@@ -1,6 +1,6 @@
 import { definePreset } from "@pandacss/dev"
-import { sheetRecipe } from "./recipes/sheet"
 import { statusMarkRecipe } from "./recipes/status-mark"
+import { surfaceRecipe } from "./recipes/surface"
 import { treeRecipe } from "./recipes/tree"
 import { semanticTokens } from "./semantic-tokens"
 import { textStyles } from "./text-styles"
@@ -10,7 +10,7 @@ export const deskPreset = definePreset({
   name: "desk",
   globalCss: {
     body: {
-      bg: "ground",
+      bg: "background",
       color: "fg",
       textStyle: "ui",
       WebkitFontSmoothing: "antialiased",
@@ -20,7 +20,10 @@ export const deskPreset = definePreset({
     tokens,
     semanticTokens,
     textStyles,
-    recipes: { sheet: sheetRecipe, statusMark: statusMarkRecipe },
+    recipes: {
+      surface: surfaceRecipe,
+      statusMark: statusMarkRecipe,
+    },
     slotRecipes: { tree: treeRecipe },
   },
 })
