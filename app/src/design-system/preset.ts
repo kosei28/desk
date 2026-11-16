@@ -1,5 +1,6 @@
 import { definePreset } from "@pandacss/dev"
 import { iconButtonRecipe } from "./recipes/icon-button"
+import { inspectorRecipe } from "./recipes/inspector"
 import { linkRecipe } from "./recipes/link"
 import { menuRecipe } from "./recipes/menu"
 import { pathTextRecipe } from "./recipes/path-text"
@@ -36,6 +37,6 @@ export const deskPreset = definePreset({
       resizeHandle: resizeHandleRecipe,
       prose: proseRecipe,
     },
-    slotRecipes: { tree: treeRecipe, tabs: tabsRecipe, menu: menuRecipe },
+    slotRecipes: { tree: treeRecipe, tabs: tabsRecipe, menu: menuRecipe, inspector: inspectorRecipe },
   },
 })
