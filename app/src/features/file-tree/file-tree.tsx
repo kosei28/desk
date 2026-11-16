@@ -9,6 +9,7 @@ import {
 } from "@ui-sdk/solid/tree"
 import { createMemo, For, Show } from "solid-js"
 import { tree } from "../../../styled-system/recipes"
+import { ChevronRight } from "../../components/icons"
 import { HumanMark, StatusMark, type Status } from "../../components/status-mark"
 
 export type FileEntry = {
@@ -20,6 +21,9 @@ export type FileEntry = {
 
 type FileTreeProps = {
   files: readonly FileEntry[]
+  /** 並べ方。省くとパスのフォルダーで並べる。値はパスで、files にあるものだけが選べる */
+  items?: TreeItemData[]
+  defaultExpanded?: string[]
   selected: string | null
   onSelect: (path: string) => void
 }
@@ -28,7 +32,7 @@ type TreeClasses = ReturnType<typeof tree>
 
 export function FileTree(props: FileTreeProps) {
   const classes = tree()
-  const items = createMemo(() => treeFromPaths(props.files.map((file) => file.path)))
+  const items = createMemo(() => props.items ?? treeFromPaths(props.files.map((file) => file.path)))
   const byPath = createMemo(() => new Map(props.files.map((file) => [file.path, file])))
 
   return (
@@ -36,6 +40,7 @@ export function FileTree(props: FileTreeProps) {
       aria-label="ファイル"
       class={classes.root}
       items={items()}
+      defaultExpanded={props.defaultExpanded}
       value={props.selected !== null && byPath().has(props.selected) ? props.selected : null}
       onValueChange={(value, details) => {
         // 選べるのはファイルだけ。フォルダーは押すと開閉し、選択は前のファイルのまま残す
@@ -62,7 +67,8 @@ function Items(props: {
         const file = () => props.byPath.get(item.value)
         return (
           <TreeItem value={item.value} class={props.classes.item}>
-            <TreeItemLabel class={props.classes.label}>
+            <TreeItemLabel class={props.classes.label} data-path={file() ? item.value : undefined}>
+              {/* 行の頭の枠は 1 つ。フォルダーは開閉の矢印、タスクは status の印。印の無いファイルは枠を持たない */}
               <Show
                 when={item.children}
                 fallback={
@@ -99,21 +105,5 @@ function Items(props: {
         )
       }}
     </For>
-  )
-}
-
-function ChevronRight() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.75"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m6.5 4.5 3.5 3.5-3.5 3.5" />
-    </svg>
   )
 }

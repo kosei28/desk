@@ -61,11 +61,18 @@ describe("FileTree", () => {
     expect(labelOf("作業机").querySelector("[role=img]")).toBeNull()
   })
 
-  it("印の無いファイルの行は頭の枠を持たず、文字から始める", () => {
+  it("行の頭の枠は 1 つで、フォルダーは矢印、タスクは status の印を置く。印の無いファイルは枠を持たない", () => {
     renderTree()
-    expect([...labelOf("作業机").children].map((child) => child.textContent)).toEqual(["作業机"])
-    expect(labelOf("用紙の大きさを決める").children).toHaveLength(3)
-    expect(labelOf("projects").children).toHaveLength(2)
+    const classes = tree()
+    const slots = (text: string) =>
+      [...labelOf(text).children].map((child) =>
+        [classes.lead, classes.text, classes.trail].find((name) => child.classList.contains(name)),
+      )
+    expect(slots("作業机")).toEqual([classes.text])
+    expect(slots("用紙の大きさを決める")).toEqual([classes.lead, classes.text, classes.trail])
+    expect(slots("projects")).toEqual([classes.lead, classes.text])
+    expect(labelOf("作業机").querySelector("svg")).toBeNull()
+    expect(labelOf("projects").querySelector(`.${classes.lead} > .${classes.indicator} svg`)).not.toBeNull()
   })
 
   it("選んだパスの行に選択の状態を付け、選び直すと移す", () => {
@@ -195,5 +202,26 @@ describe("FileTree", () => {
     renderTree("notes.md")
     const tabbable = screen.getAllByRole("treeitem").filter((item) => item.tabIndex === 0)
     expect(tabbable).toEqual([itemOf("notes.md")])
+  })
+
+  it("items があればその並びで出す", () => {
+    const parent = "tasks/2026-09-07-meal-planner.md"
+    const child = "tasks/2026-11-09-printable-menu.md"
+    render(() => (
+      <FileTree
+        files={[
+          { path: parent, title: "献立プランナーを作る", status: "inprogress" },
+          { path: child, title: "献立を印刷できるようにする", status: "inprogress" },
+        ]}
+        items={[{ value: parent, label: parent, children: [{ value: child, label: child }] }]}
+        defaultExpanded={[parent]}
+        selected={child}
+        onSelect={() => {}}
+      />
+    ))
+    expect(screen.queryByRole("heading")).toBeNull()
+    screen.getByRole("tree", { name: "ファイル" })
+    expect(itemOf("献立を印刷できるようにする").getAttribute("aria-level")).toBe("2")
+    expect(labelOf("献立を印刷できるようにする").getAttribute("data-path")).toBe(child)
   })
 })
