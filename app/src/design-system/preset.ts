@@ -1,4 +1,9 @@
 import { definePreset } from "@pandacss/dev"
+import { iconButtonRecipe } from "./recipes/icon-button"
+import { linkRecipe } from "./recipes/link"
+import { pathTextRecipe } from "./recipes/path-text"
+import { proseRecipe } from "./recipes/prose"
+import { resizeHandleRecipe } from "./recipes/resize-handle"
 import { statusMarkRecipe } from "./recipes/status-mark"
 import { surfaceRecipe } from "./recipes/surface"
 import { treeRecipe } from "./recipes/tree"
@@ -23,6 +28,11 @@ export const deskPreset = definePreset({
     recipes: {
       surface: surfaceRecipe,
       statusMark: statusMarkRecipe,
+      link: linkRecipe,
+      pathText: pathTextRecipe,
+      iconButton: iconButtonRecipe,
+      resizeHandle: resizeHandleRecipe,
+      prose: proseRecipe,
     },
     slotRecipes: { tree: treeRecipe },
   },
