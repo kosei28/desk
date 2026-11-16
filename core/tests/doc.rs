@@ -315,3 +315,28 @@ fn html_links() {
         (LinkForm::Relative, "projects/app/knowledge/d.md", "節")
     );
 }
+
+#[test]
+fn base_is_read_from_the_comment_on_the_branch_line() {
+    let with = |branch_line: &str| {
+        let content = [
+            "---",
+            "status: todo",
+            "needs_human: false",
+            branch_line,
+            "---",
+            "",
+            "# 献立",
+        ]
+        .join("\n");
+        Doc::parse(classify("projects/app/tasks/2026-11-09-home.md"), &content)
+    };
+    let d = with("branch: feature/meal-planner/printable-menu   # base: feature/meal-planner/all");
+    assert_eq!(d.str("branch"), "feature/meal-planner/printable-menu");
+    assert_eq!(d.base(), "feature/meal-planner/all");
+    assert_eq!(with("branch: feature/print #base:main").base(), "main");
+    assert_eq!(with("branch: feature/print").base(), "");
+    // 空白の無い # は YAML のコメントではなく、値の一部
+    assert_eq!(with("branch: feature/print#base:main").base(), "");
+    assert_eq!(with("repo: ~/src/app   # base: main").base(), "");
+}

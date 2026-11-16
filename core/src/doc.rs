@@ -44,6 +44,10 @@ pub struct Doc {
     pub links: Vec<Link>,
 }
 
+/// branch の行の末尾のコメント `# base: …`。YAML のコメントなので、前に空白が要る。
+static BASE_COMMENT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s#\s*base:\s*(\S+)\s*$").unwrap());
+
 /// 「いま」の行の頭のリストの印（`- `・`* `・`+ `・`1. `、チェックボックス）。
 static LIST_MARK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(?:[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|[0-9]+\.[ \t]+)").unwrap());
@@ -336,6 +340,15 @@ impl Doc {
             .unwrap_or_default()
     }
 
+    /// branch の行の末尾のコメント `# base: …` のブランチ（無ければ空）。
+    pub fn base(&self) -> String {
+        self.field("branch")
+            .and_then(|f| self.lines.get(f.line))
+            .and_then(|l| BASE_COMMENT.captures(l))
+            .map(|c| c[1].to_string())
+            .unwrap_or_default()
+    }
+
     /// status（無ければ空）。
     pub fn status(&self) -> String {
         self.str("status")
@@ -493,6 +506,7 @@ impl Serialize for Doc {
             now: String,
             status: String,
             needs_human: bool,
+            base: String,
             headings: &'a [Heading],
             links: &'a [Link],
         }
@@ -512,6 +526,7 @@ impl Serialize for Doc {
             now: self.now(),
             status: self.status(),
             needs_human: self.needs_human(),
+            base: self.base(),
             headings: &self.headings,
             links: &self.links,
         }
