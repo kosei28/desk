@@ -3,7 +3,7 @@ import type { Status } from "../../components/status-mark"
 import type { Doc } from "../../data/types"
 import type { FileEntry } from "./file-tree"
 
-const statuses: readonly string[] = ["backlog", "todo", "inprogress", "done", "dropped"] satisfies Status[]
+export const statuses: readonly string[] = ["backlog", "todo", "inprogress", "done", "dropped"] satisfies Status[]
 
 /** 日付で始まる名前（タスク・素材・inbox・library）の日付 */
 const datePrefix = /^(\d{4}-\d{2}-\d{2})-/
@@ -73,7 +73,8 @@ function itemsOf(folder: Folder): TreeItemData[] {
   return [...readme.map(fileItem), ...named.map(folderItem), ...files.map(fileItem), ...last.map(folderItem)]
 }
 
-function compareFiles(a: Doc, b: Doc): number {
+/** 左の列の、同じ段のファイルの並び。日付で始まる名前は新しい順で先に、ほかは見出しの順 */
+export function compareFiles(a: Doc, b: Doc): number {
   const dateA = datePrefix.exec(baseName(a.path))?.[1]
   const dateB = datePrefix.exec(baseName(b.path))?.[1]
   if (dateA && dateB && dateA !== dateB) return dateA < dateB ? 1 : -1

@@ -6,11 +6,15 @@ import { css, cx } from "../styled-system/css"
 import { link, resizeHandle } from "../styled-system/recipes"
 import { FileTabList, type TabEntry } from "./components/file-tabs"
 import { Surface } from "./components/surface"
+import { openUrl } from "./data/commands"
 import { createDesk } from "./data/desk"
 import type { Doc } from "./data/types"
 import { createColumns } from "./features/columns/columns"
 import { deskTreeItems, fileEntry } from "./features/file-tree/desk-tree"
 import { FileTree } from "./features/file-tree/file-tree"
+import { DeskInspector } from "./features/inspector/desk-inspector"
+import { inspect, linkIndex } from "./features/inspector/inspect"
+import { createSectionMemory } from "./features/inspector/sections"
 import { dragRegion } from "./features/window/drag-region"
 
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1)
@@ -27,12 +31,18 @@ export function App() {
   const desk = createDesk()
   const columns = createColumns()
 
+  const sections = createSectionMemory()
+
   const files = createMemo(() => desk.index()?.docs.map(fileEntry) ?? [])
   const items = createMemo(() => deskTreeItems(desk.index()?.docs ?? []))
-  const byPath = createMemo(() => new Map(desk.index()?.docs.map((doc) => [doc.path, doc])))
+  const links = createMemo(() => linkIndex(desk.index()?.docs ?? []))
+  const inspected = createMemo(() => {
+    const doc = desk.selectedDoc()
+    return doc ? inspect(doc, links()) : undefined
+  })
   const tabs = createMemo(() =>
     desk.tabs().flatMap((path): TabEntry[] => {
-      const doc = byPath().get(path)
+      const doc = links().byPath.get(path)
       if (!doc) return []
       return [{ path, title: titleOf(doc), status: fileEntry(doc).status }]
     }),
@@ -143,7 +153,7 @@ export function App() {
                     when={desk.selectedDoc()}
                     fallback={<p class={css({ textAlign: "center", color: "fg.muted" })}>ファイルを選ぶと、ここに開く</p>}
                   >
-                    {/* 本文・右の列・右クリックのメニューは順 5 */}
+                    {/* 本文と右クリックのメニューは順 5 の続き（5b・5d） */}
                     <For each={tabs()} keyed={(tab) => tab.path}>
                       {(tab) => (
                         <TabsPanel value={tab().path} class={css({ outline: "none" })}>
@@ -169,9 +179,27 @@ export function App() {
           defaultSize={columns.right.defaultSize}
           minSize={columns.right.minSize}
           maxSize={columns.right.maxSize}
-          class={passThrough}
+          class={cx(passThrough, css({ display: "flex", flexDirection: "column", paddingTop: "12" }))}
         >
-          {/* 右の列（Inspector）は順 5 で置く */}
+          <Show when={inspected()}>
+            {(content) => (
+              // 行の地は、窓の側の縁から 8px。島の側は列の境目（8px）がその間になる（左の列と同じ）
+              <aside
+                aria-label="今のファイル"
+                class={cx(
+                  pressable,
+                  css({ flex: "1", minHeight: "0", overflow: "auto", paddingInlineEnd: "2", paddingBottom: "2" }),
+                )}
+              >
+                <DeskInspector
+                  content={content()}
+                  sections={sections}
+                  onOpen={(path) => desk.open(path)}
+                  onOpenUrl={(url) => void openUrl(url).catch((e: unknown) => console.error(e))}
+                />
+              </aside>
+            )}
+          </Show>
         </ResizablePanel>
       </Resizable>
     </div>

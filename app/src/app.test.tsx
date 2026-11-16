@@ -29,6 +29,7 @@ const doc = (path: string, title: string, fields: Partial<Doc> = {}): Doc => ({
   now: "",
   status: "",
   needs_human: false,
+  base: "",
   headings: [],
   links: [],
   ...fields,
@@ -56,9 +57,14 @@ const workbench: Index = {
 /** Rust の側の代わり。呼ばれたコマンドを覚える */
 function backend(state: { open: Index | null; picked?: Index }) {
   const calls: string[] = []
+  /** 呼んだコマンドと、渡した引数 */
+  const requests: { cmd: string; args: unknown }[] = []
   mockIPC(
-    (cmd) => {
-      if (!cmd.startsWith("plugin:event|")) calls.push(cmd)
+    (cmd, args) => {
+      if (!cmd.startsWith("plugin:event|")) {
+        calls.push(cmd)
+        requests.push({ cmd, args })
+      }
       if (cmd === "index") return state.open
       if (cmd === "choose_root") {
         if (state.picked) state.open = state.picked
@@ -67,18 +73,18 @@ function backend(state: { open: Index | null; picked?: Index }) {
     },
     { shouldMockEvents: true },
   )
-  return calls
+  return { calls, requests }
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 async function renderApp(state: { open: Index | null; picked?: Index } = { open: workbench }) {
-  const calls = backend(state)
+  const { calls, requests } = backend(state)
   const result = render(() => <App />)
   await vi.waitFor(() => expect(calls).toContain("index"))
   await tick()
   flush()
-  return Object.assign(result, { calls })
+  return Object.assign(result, { calls, requests })
 }
 
 const surface = () => screen.getByRole("article")
@@ -317,6 +323,146 @@ describe("App", () => {
     await agent.act({ steps: [{ ref: "ファイル", action: "setValue", args: [folder!.value] }] })
     flush()
     expect(heading()).toBe("作業机")
+  })
+})
+
+// 右の列を見るための架空のツリー。印刷のタスクに、子タスク・関連ファイル・リンクをつなぐ
+const MENU = "projects/recipe-app/tasks/2026-11-09-printable-menu.md"
+const PAPER = "projects/recipe-app/tasks/2026-11-10-decide-paper-size.md"
+const LAYOUT = "projects/recipe-app/artifacts/print-layout.md"
+const relative = (key: string, target: string) => ({
+  key,
+  text: "",
+  raw: target,
+  line: 0,
+  start: null,
+  form: "relative" as const,
+  target,
+  anchor: "",
+})
+const linked: Index = {
+  root: "/trees/workbench",
+  docs: [
+    doc("README.md", "作業机", { links: [relative("body", MENU)] }),
+    doc("projects/recipe-app/README.md", "献立プランナー"),
+    doc(MENU, "献立を印刷できるようにする", {
+      kind: "task",
+      status: "inprogress",
+      frontmatter: [
+        { key: "status", value: "inprogress" },
+        { key: "needs_human", value: "false" },
+        { key: "pr", value: "https://github.com/example/recipe-app/pull/128" },
+      ],
+      links: [relative("body", LAYOUT)],
+    }),
+    doc(PAPER, "用紙の大きさを決める", {
+      kind: "task",
+      status: "todo",
+      needs_human: true,
+      links: [relative("parent", MENU)],
+    }),
+    doc(LAYOUT, "印刷のレイアウト", { kind: "artifact", links: [relative("tasks", MENU)] }),
+  ],
+}
+
+describe("App の右の列", () => {
+  const column = () => screen.getByRole("complementary", { name: "今のファイル" })
+  const columnRow = (title: string) => within(column()).getAllByText(title)[0].closest<HTMLElement>("a")!
+  const sectionButton = (title: string) => within(column()).getByRole("button", { name: title })
+
+  async function openMenu() {
+    const result = await renderApp({ open: linked })
+    await openFolders("projects", "recipe-app", "tasks")
+    await click(rowOf("献立を印刷できるようにする"))
+    return result
+  }
+
+  it("何も開いていなければ出さず、開くと今のファイルのパス・札・見出しを出す", async () => {
+    await renderApp({ open: linked })
+    expect(screen.queryByRole("complementary", { name: "今のファイル" })).toBeNull()
+    await openFolders("projects", "recipe-app", "tasks")
+    await click(rowOf("献立を印刷できるようにする"))
+    expect(column().textContent).toContain(MENU)
+    expect(within(column()).getByText("inprogress")).toBeTruthy()
+    const sections = within(column())
+      .getAllByRole("button")
+      .map((button) => button.textContent)
+    expect(sections).toEqual(["コード", "親子と依存", "関連ファイル", "リンク", "他からのリンク"])
+    expect(within(column()).getByText("子タスク")).toBeTruthy()
+    // 見出しも、エージェントが名前で見つけられる
+    const components = agent.snapshot().filter((entry) => !entry.offPage && entry.component !== "more")
+    for (const entry of components) {
+      expect(entry.label, `${entry.component} ${entry.ref} has no name`).toBeTruthy()
+    }
+  })
+
+  it("行を押すと新しいタブで今のタブの右に開き、もう開いているファイルの行ならそのタブに移る", async () => {
+    await openMenu()
+    expect(tabNames()).toEqual(["献立を印刷できるようにする"])
+    await click(columnRow("用紙の大きさを決める"))
+    expect(tabNames()).toEqual(["献立を印刷できるようにする", "用紙の大きさを決める"])
+    expect(heading()).toBe("用紙の大きさを決める")
+
+    await click(columnRow("献立を印刷できるようにする"))
+    expect(tabNames()).toEqual(["献立を印刷できるようにする", "用紙の大きさを決める"])
+    expect(selectedTab()?.textContent).toBe("献立を印刷できるようにする")
+    expect(heading()).toBe("献立を印刷できるようにする")
+
+    // ⌘ を押しながら押しても同じ
+    await metaClick(columnRow("印刷のレイアウト"))
+    expect(tabNames()).toEqual(["献立を印刷できるようにする", "印刷のレイアウト", "用紙の大きさを決める"])
+    expect(heading()).toBe("印刷のレイアウト")
+  })
+
+  it("行で Enter か Space を押すと開き、列は送らない", async () => {
+    await openMenu()
+    columnRow("用紙の大きさを決める").focus()
+    expect(press(" ").defaultPrevented).toBe(true)
+    expect(tabNames()).toEqual(["献立を印刷できるようにする", "用紙の大きさを決める"])
+    expect(heading()).toBe("用紙の大きさを決める")
+
+    await click(within(tabList()).getAllByRole("tab")[0])
+    columnRow("印刷のレイアウト").focus()
+    expect(press("Enter").defaultPrevented).toBe(true)
+    expect(tabNames()).toEqual(["献立を印刷できるようにする", "印刷のレイアウト", "用紙の大きさを決める"])
+    expect(heading()).toBe("印刷のレイアウト")
+  })
+
+  it("閉じた見出しは、ほかのファイルに移っても閉じたまま", async () => {
+    await openMenu()
+    await click(sectionButton("関連ファイル"))
+    flush()
+    expect(sectionButton("関連ファイル").getAttribute("aria-expanded")).toBe("false")
+    await click(columnRow("印刷のレイアウト"))
+    expect(heading()).toBe("印刷のレイアウト")
+    expect(sectionButton("関連ファイル").getAttribute("aria-expanded")).toBe("false")
+    expect(sectionButton("他からのリンク").getAttribute("aria-expanded")).toBe("true")
+  })
+
+  it("URL の値を押すと、webview の中で移らずに既定のブラウザで開くよう頼む", async () => {
+    const { requests } = await openMenu()
+    requests.length = 0
+    const pr = "https://github.com/example/recipe-app/pull/128"
+    const url = within(column()).getByRole("link", { name: pr })
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true })
+    url.dispatchEvent(event)
+    await tick()
+    expect(event.defaultPrevented).toBe(true)
+    expect(requests).toEqual([{ cmd: "open_url", args: { url: pr } }])
+  })
+
+  it("同じツリーで索引をもらい直しても、右の列の行を作り直さずフォーカスを保つ", async () => {
+    const state = { open: linked as Index | null }
+    await renderApp(state)
+    await openFolders("projects", "recipe-app", "tasks")
+    await click(rowOf("献立を印刷できるようにする"))
+    const row = columnRow("用紙の大きさを決める")
+    row.focus()
+    state.open = { ...linked, docs: [...linked.docs, doc("projects/recipe-app/inbox/2026-11-17-note.md", "メモ")] }
+    await emit("tree-changed")
+    await vi.waitFor(() => expect(within(tree()).queryByText("inbox")).not.toBeNull())
+    expect(columnRow("用紙の大きさを決める")).toBe(row)
+    expect(document.activeElement).toBe(row)
   })
 })
 
