@@ -1,6 +1,6 @@
 import type { JSX } from "@solidjs/web"
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@ui-sdk/solid/collapsible"
-import { createSignal, For, Show } from "solid-js"
+import { For, Show } from "solid-js"
 import { inspector, link } from "../../styled-system/recipes"
 import { ChevronRight } from "./icons"
 import { PathText } from "./path-text"
@@ -39,10 +39,18 @@ export function InspectorRow(props: { label: string; children: JSX.Element }) {
   )
 }
 
-// URL の値。/ の後ろで折る（ハイフンでも折れる）。指したときだけ下線を引く
-export function InspectorUrl(props: { href: string }) {
+// URL の値。/ の後ろで折る（ハイフンでも折れる）。指したときだけ下線を引く。
+// 押すと href へ移らずに onOpen を呼ぶ（webview の中で外のページへ移らないように。開くのは呼ぶ側）
+export function InspectorUrl(props: { href: string; onOpen: () => void }) {
   return (
-    <a href={props.href} class={link({ tone: "quiet" })}>
+    <a
+      href={props.href}
+      class={link({ tone: "quiet" })}
+      onClick={(event) => {
+        event.preventDefault()
+        props.onOpen()
+      }}
+    >
       {props.href.split("/").map((part, i) => (i === 0 ? part : ["/", <wbr />, part]))}
     </a>
   )
@@ -78,32 +86,17 @@ export function InspectorTag(props: { children: JSX.Element }) {
   return <span class={classes.pill}>{props.children}</span>
 }
 
-// 見出しの開け閉めは、見出しの言葉ごとに覚え、ほかのファイルに移っても保つ。どれも開いて始める。
-// 置き場所は暫定で、画面を組み立てるとき（順 4）に状態の置き場所へ移す
-const [closedSections, setClosedSections] = createSignal<ReadonlySet<string>>(new Set())
-
-// 覚えた開け閉めを忘れ、どの見出しも開いた状態に戻す。テストが互いの記憶を持ち越さないようにするため
-export function forgetInspectorSections() {
-  setClosedSections(new Set<string>())
-}
-
-function setSectionOpen(title: string, open: boolean) {
-  setClosedSections((closed) => {
-    const next = new Set(closed)
-    if (open) next.delete(title)
-    else next.add(title)
-    return next
-  })
-}
-
-// 見出しと、その中身。どの見出しも同じ形で、行の幅いっぱいを押すと畳む。矢印は右端にいつも出し、件数は出さない
-export function InspectorSection(props: { title: string; children: JSX.Element }) {
+// 見出しと、その中身。どの見出しも同じ形で、行の幅いっぱいを押すと畳む。矢印は右端にいつも出し、件数は出さない。
+// 開け閉めは呼ぶ側が持つ（見出しの言葉ごとに覚え、ほかのファイルに移っても保つため）
+export function InspectorSection(props: {
+  title: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  children: JSX.Element
+}) {
   return (
     <section class={classes.section} aria-label={props.title}>
-      <Collapsible
-        open={!closedSections().has(props.title)}
-        onOpenChange={(open) => setSectionOpen(props.title, open)}
-      >
+      <Collapsible open={props.open} onOpenChange={props.onOpenChange}>
         <h2>
           <CollapsibleTrigger class={classes.trigger}>
             {props.title}
@@ -123,15 +116,19 @@ export function InspectorGroups(props: { children: JSX.Element }) {
   return <div class={classes.groups}>{props.children}</div>
 }
 
-// ファイルの行の一覧。label があれば名前を上に置き、空なら「[]」と出す
+// ファイルの行の一覧。label があれば名前を上に置き、空なら「[]」と出す。
+// 行は key（パス）で見分け、一覧がもらい直されても同じ行は作り直さない（フォーカスを保つ）。children には行の値の accessor を渡す
 export function InspectorList<T>(props: {
   label?: string
   each: readonly T[]
-  children: (item: T) => JSX.Element
+  key: (item: T) => string
+  children: (item: () => T) => JSX.Element
 }) {
   const items = () => (
     <div class={classes.items}>
-      <For each={props.each}>{(item) => props.children(item)}</For>
+      <For each={props.each} keyed={props.key}>
+        {(item) => props.children(item)}
+      </For>
     </div>
   )
   return (
@@ -151,7 +148,8 @@ export function InspectorList<T>(props: {
 // ファイルの 1 行。左の列の行と同じで、タスクなら頭に status の印、人が要るなら右端に人の印。見出しは省かずに折り返す。
 // place は、場所が行から分からないときに添える場所（プロジェクトの名前・archive）。
 // href はいつも要る。href の無いリンクはキーボードで届かず、指したときの地も付かないため。
-// onOpen を渡すと、押したときに href へ移らずに呼ぶ。⌘ を押しながら押したら newTab が true（新しいタブで開く）
+// 押すと href へ移らずに onOpen を呼ぶ。開き方は ⌘ の有る無しで変えない（いつも新しいタブ。開いているならそのタブ）。
+// キーでは、左の列の行と同じく Enter と Space で開く（Space で列を送らない。Enter は keydown で取り、リンクの既定の click を起こさない）
 export function InspectorItem(props: {
   title: string
   status?: Status
@@ -159,7 +157,7 @@ export function InspectorItem(props: {
   place?: string
   href: string
   path?: string
-  onOpen?: (newTab: boolean) => void
+  onOpen: () => void
 }) {
   return (
     <a
@@ -167,9 +165,13 @@ export function InspectorItem(props: {
       href={props.href}
       data-path={props.path}
       onClick={(event) => {
-        if (!props.onOpen) return
         event.preventDefault()
-        props.onOpen(event.metaKey)
+        props.onOpen()
+      }}
+      onKeyDown={(event) => {
+        if (event.isComposing || (event.key !== "Enter" && event.key !== " ")) return
+        event.preventDefault()
+        props.onOpen()
       }}
     >
       <Show when={props.status}>

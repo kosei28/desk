@@ -66,6 +66,8 @@ export type Doc = {
   now: string
   status: string
   needs_human: boolean
+  /** branch の行の末尾のコメント `# base: …` のブランチ。無ければ空 */
+  base: string
   headings: Heading[]
   links: Link[]
 }

@@ -19,6 +19,7 @@ const doc = (path: string, fields: Partial<Doc> = {}): Doc => ({
   now: "",
   status: "",
   needs_human: false,
+  base: "",
   headings: [],
   links: [],
   ...fields,

@@ -21,6 +21,7 @@ const doc = (path: string, title: string): Doc => ({
   now: "",
   status: "",
   needs_human: false,
+  base: "",
   headings: [],
   links: [],
 })

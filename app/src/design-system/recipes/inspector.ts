@@ -33,12 +33,12 @@ export const inspectorRecipe = defineSlotRecipe({
     "trail",
   ],
   base: {
-    // 列の縁から 8px の所に行の地を置き、行の地の中 8px に文字を置く。左の列と同じ組み立て。いちばん上と見出しの間は 12px
+    // 行の地の中 8px に文字を置く。左の列（tree）と同じく、列の縁から行の地までの 8px は置く側（列の入れ物）が持つ。
+    // 島の側は列の境目（8px）がその間になる。いちばん上と見出しの間は 12px
     root: {
       display: "flex",
       flexDirection: "column",
       gap: "3",
-      paddingInline: "2",
       color: "fg",
       textStyle: "ui",
     },

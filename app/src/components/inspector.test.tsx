@@ -1,10 +1,8 @@
 import { render, screen } from "@solidjs/testing-library"
-import { flush } from "solid-js"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { createSignal, flush } from "solid-js"
+import { describe, expect, it, vi } from "vitest"
 import { click } from "../test/input"
 import {
-  forgetInspectorSections,
-  Inspector,
   InspectorHead,
   InspectorHuman,
   InspectorItem,
@@ -18,74 +16,24 @@ import {
   InspectorUrl,
 } from "./inspector"
 
-// 見出しの開け閉めの記憶はモジュールにあるので、テストごとに忘れさせる
-afterEach(() => {
-  forgetInspectorSections()
-})
-
 describe("InspectorSection", () => {
-  it("見出しに件数を出さず、開いて始め、押すと畳める", () => {
+  it("見出しに件数を出さず、開け閉めは呼ぶ側の値に従い、押すと onOpenChange を呼ぶ", () => {
+    const [open, setOpen] = createSignal(true)
+    const onOpenChange = vi.fn((next: boolean) => setOpen(next))
     render(() => (
-      <InspectorSection title="リンク">
-        <InspectorItem title="印刷のレイアウト" href="#" />
+      <InspectorSection title="リンク" open={open()} onOpenChange={onOpenChange}>
+        <InspectorItem title="印刷のレイアウト" href="#" onOpen={() => {}} />
       </InspectorSection>
     ))
     const trigger = screen.getByRole("button", { name: "リンク" })
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
     click(trigger)
     flush()
+    expect(onOpenChange.mock.calls.map(([next]) => next)).toEqual([false])
     expect(trigger.getAttribute("aria-expanded")).toBe("false")
-    click(trigger)
+    setOpen(true)
     flush()
     expect(trigger.getAttribute("aria-expanded")).toBe("true")
-  })
-
-  it("閉じたまま終わった見出しも、忘れさせると開いて始める", () => {
-    const first = render(() => (
-      <InspectorSection title="リンク">
-        <InspectorItem title="印刷のレイアウト" href="#" />
-      </InspectorSection>
-    ))
-    click(screen.getByRole("button", { name: "リンク" }))
-    flush()
-    first.unmount()
-    forgetInspectorSections()
-    flush()
-
-    render(() => (
-      <InspectorSection title="リンク">
-        <InspectorItem title="印刷のレイアウト" href="#" />
-      </InspectorSection>
-    ))
-    expect(screen.getByRole("button", { name: "リンク" }).getAttribute("aria-expanded")).toBe("true")
-  })
-
-  it("開け閉めは見出しの言葉ごとに覚え、ほかのファイルに移っても保つ", () => {
-    const first = render(() => (
-      <InspectorSection title="他からのリンク">
-        <InspectorItem title="献立プランナーの設計" href="#" />
-      </InspectorSection>
-    ))
-    click(screen.getByRole("button", { name: "他からのリンク" }))
-    flush()
-    first.unmount()
-
-    render(() => (
-      <Inspector>
-        <InspectorSection title="他からのリンク">
-          <InspectorItem title="レシピ API の仕組み" href="#" />
-        </InspectorSection>
-        <InspectorSection title="リンク">
-          <InspectorItem title="印刷のレイアウト" href="#" />
-        </InspectorSection>
-      </Inspector>
-    ))
-    const back = screen.getByRole("button", { name: "他からのリンク" })
-    expect(back.getAttribute("aria-expanded")).toBe("false")
-    expect(screen.getByRole("button", { name: "リンク" }).getAttribute("aria-expanded")).toBe("true")
-    click(back)
-    flush()
-    expect(back.getAttribute("aria-expanded")).toBe("true")
   })
 })
 
@@ -93,8 +41,8 @@ describe("InspectorList", () => {
   it("名前の下にファイルの行を全部出す", () => {
     const titles = Array.from({ length: 12 }, (_, i) => `リンク元のファイル ${i + 1}`)
     render(() => (
-      <InspectorList label="子タスク" each={titles}>
-        {(title: string) => <InspectorItem title={title} href="#" />}
+      <InspectorList label="子タスク" each={titles} key={(title) => title}>
+        {(title) => <InspectorItem title={title()} href="#" onOpen={() => {}} />}
       </InspectorList>
     ))
     expect(screen.getByText("子タスク")).toBeTruthy()
@@ -103,8 +51,8 @@ describe("InspectorList", () => {
 
   it("空のリストは「[]」と出す", () => {
     render(() => (
-      <InspectorList label="knowledge" each={[] as string[]}>
-        {(title: string) => <InspectorItem title={title} href="#" />}
+      <InspectorList label="knowledge" each={[] as string[]} key={(title) => title}>
+        {(title) => <InspectorItem title={title()} href="#" onOpen={() => {}} />}
       </InspectorList>
     ))
     expect(screen.getByText("[]")).toBeTruthy()
@@ -114,14 +62,14 @@ describe("InspectorList", () => {
 
 describe("InspectorItem", () => {
   it("タスクなら頭に status の印、人が要るなら人の印、場所が分からないものは場所を添える", () => {
-    render(() => <InspectorItem title="用紙の大きさを決める" status="todo" needsHuman place="archive" href="#" />)
+    render(() => <InspectorItem title="用紙の大きさを決める" status="todo" needsHuman place="archive" href="#" onOpen={() => {}} />)
     const row = screen.getByRole("link")
     expect(row.querySelector("[role=img][aria-label=todo]")).not.toBeNull()
     expect(row.querySelector("[role=img][aria-label=人が要る]")).not.toBeNull()
     expect(row.textContent).toBe("用紙の大きさを決めるarchive")
   })
 
-  it("押すと href へ移らずに onOpen を呼び、⌘ を押しながらなら新しいタブで開く", () => {
+  it("押すと href へ移らずに onOpen を呼ぶ。⌘ を押しながらでも同じ", () => {
     const onOpen = vi.fn()
     render(() => <InspectorItem title="印刷のレイアウト" href="projects/recipe-app/artifacts/print-layout.md" onOpen={onOpen} />)
     const row = screen.getByRole("link")
@@ -129,7 +77,7 @@ describe("InspectorItem", () => {
     const withMeta = new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true })
     row.dispatchEvent(plain)
     row.dispatchEvent(withMeta)
-    expect(onOpen.mock.calls).toEqual([[false], [true]])
+    expect(onOpen).toHaveBeenCalledTimes(2)
     expect(plain.defaultPrevented).toBe(true)
     expect(withMeta.defaultPrevented).toBe(true)
   })
@@ -179,11 +127,20 @@ describe("InspectorTable", () => {
 describe("InspectorUrl", () => {
   it("/ の後ろにだけ折れる所を置き、ハイフンの前後には置かない", () => {
     const href = "https://example.com/recipe-app/pull/128"
-    render(() => <InspectorUrl href={href} />)
+    render(() => <InspectorUrl href={href} onOpen={() => {}} />)
     const link = screen.getByRole("link")
     expect(link.getAttribute("href")).toBe(href)
     expect(link.textContent).toBe(href)
     const breaks = Array.from(link.querySelectorAll("wbr")).map((wbr) => wbr.previousSibling?.textContent)
     expect(breaks).toEqual(["/", "/", "/", "/", "/"])
+  })
+
+  it("押すと href へ移らずに onOpen を呼ぶ", () => {
+    const onOpen = vi.fn()
+    render(() => <InspectorUrl href="https://example.com/a" onOpen={onOpen} />)
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true })
+    screen.getByRole("link").dispatchEvent(event)
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(event.defaultPrevented).toBe(true)
   })
 })
