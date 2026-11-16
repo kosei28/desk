@@ -30,6 +30,20 @@ describe("FileTabList", () => {
     expect(tabs.map((tab) => tab.textContent)).toEqual(["献立を印刷できるようにする", "印刷のレイアウト"])
   })
 
+  it("同じパスのタブは、渡し直しても作り直さず、見出しだけ変える", () => {
+    const [tabs, setTabs] = createSignal(entries)
+    render(() => (
+      <Tabs value={entries[0].path}>
+        <FileTabList tabs={tabs()} onClose={() => {}} />
+      </Tabs>
+    ))
+    const before = screen.getByRole("tab", { name: "印刷のレイアウト" })
+    setTabs([entries[0], { ...entries[1], title: "印刷の版面" }])
+    flush()
+    const after = screen.getByRole("tab", { name: "印刷の版面" })
+    expect(after).toBe(before)
+  })
+
   it("タブを押すと、そのパスに切り替わる", () => {
     const { value } = renderTabs()
     click(screen.getByRole("tab", { name: "印刷のレイアウト" }))

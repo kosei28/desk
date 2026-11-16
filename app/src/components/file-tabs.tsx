@@ -25,23 +25,24 @@ type FileTabListProps = {
 export function FileTabList(props: FileTabListProps) {
   const classes = tabs()
   return (
-    <ScrollArea class={cx(classes.area, props.class)}>
+    <ScrollArea aria-label="タブの並び" class={cx(classes.area, props.class)}>
       <ScrollAreaViewport class={classes.viewport}>
         <ScrollAreaContent>
     <TabsList aria-label="開いているファイル" class={classes.list}>
-      <For each={props.tabs}>
+      {/* タブはパスで見分ける。見出しや印が変わっても、同じパスのタブは作り直さない（フォーカスと退場中のパネルを保つ） */}
+      <For each={props.tabs} keyed={(tab) => tab.path}>
         {(tab) => (
-          <div class={classes.item} data-path={tab.path}>
-            <TabsTab value={tab.path} class={classes.tab}>
-              <Show when={tab.status}>{(status) => <StatusMark status={status()} />}</Show>
-              <span class={classes.title}>{tab.title}</span>
+          <div class={classes.item} data-path={tab().path}>
+            <TabsTab value={tab().path} class={classes.tab}>
+              <Show when={tab().status}>{(status) => <StatusMark status={status()} />}</Show>
+              <span class={classes.title}>{tab().title}</span>
             </TabsTab>
             <button
               type="button"
               tabindex={-1}
-              aria-label={`${tab.title} を閉じる`}
+              aria-label={`${tab().title} を閉じる`}
               class={cx(classes.close, iconButton())}
-              onClick={() => props.onClose(tab.path)}
+              onClick={() => props.onClose(tab().path)}
             >
               <Cross />
             </button>
