@@ -15,3 +15,6 @@ export const onTreeChanged = (handler: () => void): Promise<UnlistenFn> => liste
 
 /** 開いているツリーの、ルートからのパスの Markdown の本文（frontmatter を外したもの）。索引にある .md だけを読める */
 export const getBody = (path: string) => invoke<string>("body", { path })
+
+/** 外の URL（http・https・mailto）を既定のアプリで開く。ほかの scheme は Rust の側で断る */
+export const openUrl = (url: string) => invoke<void>("open_url", { url })

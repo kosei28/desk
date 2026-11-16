@@ -1,5 +1,11 @@
 /// webview から呼べるアプリのコマンド。capabilities で許したものだけが呼べる。
-const COMMANDS: &[&str] = &["titlebar_double_click", "index", "body", "choose_root"];
+const COMMANDS: &[&str] = &[
+    "titlebar_double_click",
+    "index",
+    "body",
+    "choose_root",
+    "open_url",
+];
 
 fn main() {
     tauri_build::try_build(
