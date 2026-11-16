@@ -22,6 +22,8 @@ export const tabsRecipe = defineSlotRecipe({
       padding: "1",
       margin: "-1",
       scrollbarWidth: "none",
+      // 今のタブを見える所まで送るとき（scrollIntoView）、ぼかした端に置かない
+      scrollPaddingInline: "tabMin",
       "--scroll-area-overflow-x-start": "inherit",
       "--scroll-area-overflow-x-end": "inherit",
       "--fade-start": "min(token(sizes.tabMin), var(--scroll-area-overflow-x-start, 0px))",
