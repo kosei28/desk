@@ -11,7 +11,7 @@ import { App } from "./app"
 // 1 つのファイルに 1 つ。外した部品も offPage として覚えているので、作り直さない
 const agent = createAgent()
 
-const sheet = () => screen.getByRole("article")
+const surface = () => screen.getByRole("article")
 const rowOf = (text: string) => screen.getByText(text).closest<HTMLElement>("[data-slot=tree-label]")!
 const mouse = (target: Element, type: "mousedown" | "mouseup", detail: number) =>
   target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, detail, button: 0 }))
@@ -19,19 +19,19 @@ const mouse = (target: Element, type: "mousedown" | "mouseup", detail: number) =
 describe("App", () => {
   beforeEach(() => invoke.mockClear())
 
-  it("はじめは紙に、ファイルを選ぶよう出す", () => {
+  it("はじめは読む面に、ファイルを選ぶよう出す", () => {
     render(() => <App />)
-    expect(sheet().textContent).toBe("ファイルを選ぶと、ここに開く")
+    expect(surface().textContent).toBe("ファイルを選ぶと、ここに開く")
   })
 
-  it("ツリーでファイルを押すと、紙にそのパスと見出しを出す", async () => {
+  it("ツリーでファイルを押すと、読む面にその見出しを出す。パスは出さない（右クリックのメニューでコピーする）", async () => {
     render(() => <App />)
     await click(rowOf("作業机"))
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("作業机")
-    expect(sheet().textContent).toContain("README.md")
+    expect(surface().textContent).not.toContain("README.md")
   })
 
-  it("フォルダーを押しても、紙は前のファイルのまま", async () => {
+  it("フォルダーを押しても、読む面は前のファイルのまま", async () => {
     render(() => <App />)
     await click(rowOf("作業机"))
     await click(rowOf("projects"))
@@ -39,12 +39,12 @@ describe("App", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("作業机")
   })
 
-  // 帯の高さの中で紙に覆われていない所がどこも帯に当たるかは、レイアウトの話で jsdom では見られない。ここでは、
-  // 窓を動かすのが帯の層だけで、紙・ツリーの行・紙の列の入れ物（帯より下の右と下の余白）では動かないことを見る
-  it("帯の層を押すと窓を動かし、ダブルクリックでタイトルバーのアクションを送る。紙・ツリーの行・帯より下の余白では何もしない", async () => {
+  // 帯の高さの中で読む面に覆われていない所がどこも帯に当たるかは、レイアウトの話で jsdom では見られない。ここでは、
+  // 窓を動かすのが帯の層だけで、読む面・ツリーの行・読む面の列の入れ物（帯より下の右と下の余白）では動かないことを見る
+  it("帯の層を押すと窓を動かし、ダブルクリックでタイトルバーのアクションを送る。読む面・ツリーの行・帯より下の余白では何もしない", async () => {
     render(() => <App />)
     const band = screen.getByRole("navigation", { name: "ツリー" }).previousElementSibling!
-    const margin = sheet().parentElement!
+    const margin = surface().parentElement!
     const doubleClick = (target: Element) => {
       mouse(target, "mousedown", 1)
       mouse(target, "mouseup", 1)
@@ -54,7 +54,7 @@ describe("App", () => {
 
     const row = rowOf("作業机")
     await click(row)
-    for (const target of [sheet(), row, margin]) doubleClick(target)
+    for (const target of [surface(), row, margin]) doubleClick(target)
     expect(invoke).not.toHaveBeenCalled()
 
     expect(band.parentElement).toBe(margin.parentElement)
