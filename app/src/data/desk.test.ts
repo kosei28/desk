@@ -1,6 +1,6 @@
 import { emit } from "@tauri-apps/api/event"
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks"
-import { createRoot } from "solid-js"
+import { createRoot, flush } from "solid-js"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { createDesk, type Desk } from "./desk"
 import type { Doc, Index } from "./types"
@@ -71,27 +71,147 @@ describe("createDesk", () => {
     const calls = backend({ open: null })
     const desk = open()
     await vi.waitFor(() => expect(calls).toContain("index"))
+    await vi.waitFor(() => expect(desk.loaded()).toBe(true))
     expect(desk.index()).toBeNull()
     expect(desk.error()).toBeNull()
   })
 
-  it("開いているツリーの索引をもらい、選んだパスのファイルを引く", async () => {
+  it("開いているツリーの索引をもらい、今のタブのファイルを引く", async () => {
+    const calls = backend({ open: workbench })
+    const desk = open()
+    expect(desk.loaded()).toBe(false)
+    await vi.waitFor(() => expect(desk.index()).toEqual(workbench))
+    expect(desk.loaded()).toBe(true)
+    expect(calls.filter((c) => c === "index")).toHaveLength(1)
+
+    desk.open("projects/recipe-app/README.md")
+    flush()
+    await vi.waitFor(() => expect(desk.selectedDoc()?.title).toBe("献立プランナー"))
+    expect(desk.tabs()).toEqual(["projects/recipe-app/README.md"])
+  })
+
+  it("開くといつも新しいタブで開き、今のタブの右に置いて切り替える", async () => {
     backend({ open: workbench })
     const desk = open()
     await vi.waitFor(() => expect(desk.index()).toEqual(workbench))
+    const [a, b, c] = ["README.md", "projects/recipe-app/README.md", "projects/recipe-app/tasks/2026-11-09-printable-menu.md"]
 
-    desk.select("projects/recipe-app/README.md")
-    await vi.waitFor(() => expect(desk.selectedDoc()?.title).toBe("献立プランナー"))
-    desk.select(null)
-    await vi.waitFor(() => expect(desk.selectedDoc()).toBeUndefined())
+    desk.open(a)
+    flush()
+    desk.open(b)
+    flush()
+    expect(desk.tabs()).toEqual([a, b])
+    expect(desk.selected()).toBe(b)
+
+    desk.open(a)
+    flush()
+    desk.open(c)
+    flush()
+    expect(desk.tabs()).toEqual([a, c, b])
+    expect(desk.selected()).toBe(c)
   })
 
-  it("ツリーが変わったら索引をもらい直し、選択は残す。選んだファイルが消えたら、選んだファイルは無い", async () => {
+  it("もう開いているファイルを開くと、タブを足さずにそのタブに切り替える", async () => {
+    backend({ open: workbench })
+    const desk = open()
+    await vi.waitFor(() => expect(desk.index()).toEqual(workbench))
+    desk.open("README.md")
+    flush()
+    desk.open("projects/recipe-app/README.md")
+    flush()
+
+    desk.open("README.md")
+    flush()
+    expect(desk.tabs()).toEqual(["README.md", "projects/recipe-app/README.md"])
+    expect(desk.selected()).toBe("README.md")
+    desk.open("projects/recipe-app/README.md")
+    flush()
+    expect(desk.tabs()).toEqual(["README.md", "projects/recipe-app/README.md"])
+    expect(desk.selected()).toBe("projects/recipe-app/README.md")
+  })
+
+  it("今のタブを閉じると右隣、右端なら左隣が今のタブになる。最後のタブを閉じると、今のタブは無い", async () => {
+    backend({ open: workbench })
+    const desk = open()
+    await vi.waitFor(() => expect(desk.index()).toEqual(workbench))
+    const [a, b] = ["README.md", "projects/recipe-app/README.md"]
+    desk.open(a)
+    flush()
+    desk.open(b)
+    flush()
+    desk.open(a)
+    flush()
+
+    desk.close(a)
+    flush()
+    expect(desk.selected()).toBe(b)
+    desk.open(a)
+    flush()
+    desk.close(a)
+    flush()
+    expect(desk.selected()).toBe(b)
+
+    desk.open(a)
+    flush()
+    desk.close(b)
+    flush()
+    expect(desk.tabs()).toEqual([a])
+    expect(desk.selected()).toBe(a)
+    desk.close(a)
+    flush()
+    expect(desk.tabs()).toEqual([])
+    expect(desk.selected()).toBeNull()
+    expect(desk.selectedDoc()).toBeUndefined()
+  })
+
+  it("今でないタブを閉じても、今のタブは変わらない", async () => {
+    backend({ open: workbench })
+    const desk = open()
+    await vi.waitFor(() => expect(desk.index()).toEqual(workbench))
+    desk.open("README.md")
+    flush()
+    desk.open("projects/recipe-app/README.md")
+    flush()
+    desk.close("README.md")
+    flush()
+    expect(desk.selected()).toBe("projects/recipe-app/README.md")
+  })
+
+  it("タブを隣に切り替え、端からは反対の端に回る", async () => {
+    backend({ open: workbench })
+    const desk = open()
+    await vi.waitFor(() => expect(desk.index()).toEqual(workbench))
+    const [a, b] = ["README.md", "projects/recipe-app/README.md"]
+    desk.cycle(1)
+    flush()
+    expect(desk.selected()).toBeNull()
+    desk.open(a)
+    flush()
+    desk.open(b)
+    flush()
+
+    desk.cycle(1)
+    flush()
+    expect(desk.selected()).toBe(a)
+    desk.cycle(-1)
+    flush()
+    expect(desk.selected()).toBe(b)
+    desk.cycle(1)
+    flush()
+    expect(desk.selected()).toBe(a)
+  })
+
+  it("ツリーが変わったら索引をもらい直し、タブは残す。消えたファイルのタブは閉じる", async () => {
     const state = { open: workbench as Index | null }
     backend(state)
     const desk = open()
     await vi.waitFor(() => expect(desk.index()).toEqual(workbench))
-    desk.select("README.md")
+    desk.open("README.md")
+    flush()
+    desk.open("projects/recipe-app/README.md")
+    flush()
+    desk.open("README.md")
+    flush()
 
     const renamed = { ...workbench, docs: [doc("README.md", "机"), workbench.docs[1]] }
     state.open = renamed
@@ -101,19 +221,21 @@ describe("createDesk", () => {
     state.open = { ...workbench, docs: [workbench.docs[1]] }
     await emit("tree-changed")
     await vi.waitFor(() => expect(desk.index()?.docs).toHaveLength(1))
-    expect(desk.selected()).toBe("README.md")
-    expect(desk.selectedDoc()).toBeUndefined()
+    expect(desk.tabs()).toEqual(["projects/recipe-app/README.md"])
+    expect(desk.selected()).toBe("projects/recipe-app/README.md")
   })
 
-  it("フォルダーを選んで別のツリーを開くと、その索引をもらい、選択を外す", async () => {
+  it("フォルダーを選んで別のツリーを開くと、その索引をもらい、タブを全部閉じる", async () => {
     const calls = backend({ open: workbench, picked: garden })
     const desk = open()
     await vi.waitFor(() => expect(desk.index()).toEqual(workbench))
-    desk.select("README.md")
+    desk.open("README.md")
+    flush()
 
     await desk.choose()
     expect(calls).toContain("choose_root")
     expect(desk.index()).toEqual(garden)
+    expect(desk.tabs()).toEqual([])
     expect(desk.selected()).toBeNull()
   })
 
