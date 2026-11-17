@@ -3,6 +3,7 @@ const COMMANDS: &[&str] = &[
     "titlebar_double_click",
     "index",
     "body",
+    "resolve_link",
     "choose_root",
     "open_url",
 ];

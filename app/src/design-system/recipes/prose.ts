@@ -45,6 +45,21 @@ export const proseRecipe = defineRecipe({
       fontSize: "0.875em",
       lineHeight: "ui",
     },
+    // コードの色（Shiki）。ライトとダークの色を CSS 変数で持たせてあり、ここで明暗に合う方を選ぶ。地は上の pre のまま
+    "& .shiki span": {
+      color: "var(--shiki-light)",
+      fontStyle: "var(--shiki-light-font-style)",
+      fontWeight: "var(--shiki-light-font-weight)",
+      textDecoration: "var(--shiki-light-text-decoration)",
+      _dark: {
+        color: "var(--shiki-dark)",
+        fontStyle: "var(--shiki-dark-font-style)",
+        fontWeight: "var(--shiki-dark-font-weight)",
+        textDecoration: "var(--shiki-dark-text-decoration)",
+      },
+    },
+    // 行を分けた数式（KaTeX）。島より長い式は、その式だけを横に送る
+    "& .katex-display": { overflowX: "auto", overflowY: "hidden", paddingBlock: "1" },
     "& :is(ul, ol)": { paddingInlineStart: "6" },
     "& ul": { listStyleType: "disc" },
     "& ol": { listStyleType: "decimal" },

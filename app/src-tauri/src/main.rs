@@ -29,6 +29,7 @@ fn main() {
             titlebar::titlebar_double_click,
             desk::index,
             desk::body,
+            desk::resolve_link,
             desk::choose_root,
             external::open_url
         ])

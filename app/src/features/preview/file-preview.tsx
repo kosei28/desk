@@ -1,8 +1,10 @@
+import type { Root } from "hast"
 import { createEffect, createMemo, createSignal, Match, Show, Switch } from "solid-js"
 import { css } from "../../../styled-system/css"
 import { prose } from "../../../styled-system/recipes"
 import { getBody } from "../../data/commands"
 import type { Doc } from "../../data/types"
+import { markdownToHast } from "./markdown"
 import { MarkdownBody, scrollBox, scrollToTop } from "./markdown-body"
 import { imageUrl } from "./resolve"
 
@@ -34,10 +36,13 @@ export type FilePreviewProps = {
 /**
  * 島の中身。見出し（h1）と description の下に、Markdown なら本文、画像なら画像を出す。ほかのファイルは見出しだけ。
  * 本文は doc が変わるたび（ツリーが変わって索引をもらい直すたび）に読み直す。中身が同じなら描き直さない。
+ * 本文は、数式・コードの色・図の種類まで読み終えた木にしてから描く（描いた後で中身の高さが変わらない）。
  */
 export function FilePreview(props: FilePreviewProps) {
   let root: HTMLDivElement | undefined
   const [body, setBody] = createSignal<string>()
+  // body を木にしたもの。body が変わったときだけ作り直す
+  const [tree, setTree] = createSignal<Root>()
   // 本文を読めなかった。描くものはもう来ないので、anchor は上へ送って終える
   const [failed, setFailed] = createSignal(false)
 
@@ -61,8 +66,25 @@ export function FilePreview(props: FilePreviewProps) {
     },
   )
 
-  // 中身を描き終えたか（Markdown なら本文が届いて描いた。空の本文も、読めなかったときも終わり）
-  const drawn = createMemo(() => !props.doc.is_md || body() !== undefined || failed())
+  createEffect(body, (text) => {
+    if (text === undefined) return
+    // 木にするのが重なったら、最後の本文の木だけを使う
+    let stale = false
+    markdownToHast(text).then(
+      (root) => !stale && setTree(root),
+      (e: unknown) => {
+        if (stale) return
+        console.error(e)
+        setFailed(true)
+      },
+    )
+    return () => {
+      stale = true
+    }
+  })
+
+  // 中身を描き終えたか（Markdown なら本文が届いて木にして描いた。空の本文も、読めなかったときも終わり）
+  const drawn = createMemo(() => !props.doc.is_md || tree() !== undefined || failed())
 
   // anchor があれば、描いたのと同じ流れの中で（絵を出す前に）その id へ送る。当たらなければ上へ。
   // 次のフレームまで待つと、上から（または前の位置で）描いた絵が 1 枚出てチラつく
@@ -87,11 +109,11 @@ export function FilePreview(props: FilePreviewProps) {
         </Show>
       </header>
       <Switch>
-        <Match when={props.doc.is_md && body()}>
-          {(markdown) => (
+        <Match when={props.doc.is_md && tree()}>
+          {(root) => (
             <MarkdownBody
               doc={props.doc}
-              markdown={markdown()}
+              tree={root()}
               byPath={props.byPath}
               onOpen={props.onOpen}
               onOpenUrl={props.onOpenUrl}

@@ -1,17 +1,20 @@
 import { Fragment, jsx, jsxs } from "@solidjs/h/jsx-runtime"
 import type { JSX } from "@solidjs/web"
+import type { Root } from "hast"
 import { toJsxRuntime } from "hast-util-to-jsx-runtime"
 import { createMemo, omit } from "solid-js"
 import { prose } from "../../../styled-system/recipes"
+import { resolveLink } from "../../data/commands"
 import type { Doc } from "../../data/types"
-import { markdownToHast } from "./markdown"
-import { imageSrc, linkAction, srcsetCandidates } from "./resolve"
+import { mermaidTag } from "./markdown"
+import { MermaidDiagram } from "./mermaid-diagram"
+import { diagramLinkAction, imageSrc, type LinkAction, linkAction, srcsetCandidates } from "./resolve"
 
 export type MarkdownBodyProps = {
   /** 本文を持つファイル。リンクと画像の先を、その links から引く */
   doc: Doc
-  /** 本文（frontmatter を外したもの） */
-  markdown: string
+  /** 本文（frontmatter を外したもの）を markdownToHast で木にしたもの */
+  tree: Root
   /** 索引のパスの引き当て。リンクの先がツリーにあるかを見る */
   byPath: ReadonlyMap<string, Doc>
   /** ツリーの中のファイルを開く。anchor（本文の要素の id）があれば、開いた先でそこへ送る */
@@ -46,9 +49,19 @@ export function scrollToTop(target: Element) {
  * Markdown の本文を、読む形（prose）で描く。見出しは島の見出しに出すので、本文には出さない。
  * リンクは押しても webview の中で移らず、中のファイルは onOpen、外の URL は onOpenUrl、# の先（見出し・脚注）は本文の中へ送る。
  * 画像は、ローカルのファイルなら Rust の scheme から、http・https ならそのまま読む。
+ * mermaid の図は pele で描く。図の中のリンクも webview の中では移らず、本文のリンクと同じく開く（先は core に解いてもらう）。
  */
 export function MarkdownBody(props: MarkdownBodyProps) {
   let root: HTMLDivElement | undefined
+
+  const run = (action: LinkAction) => {
+    if (action.kind === "open") props.onOpen(action.path, action.anchor)
+    else if (action.kind === "url") props.onOpenUrl(action.url)
+    else if (action.kind === "anchor") {
+      const target = root?.querySelector(`[id="${CSS.escape(action.id)}"]`)
+      if (target) scrollToTop(target)
+    }
+  }
 
   function BodyLink(link: ElementProps & { href?: string }) {
     const rest = omit(link, "href", "children")
@@ -59,13 +72,7 @@ export function MarkdownBody(props: MarkdownBodyProps) {
         onClick={(event: MouseEvent) => {
           event.preventDefault()
           if (link.href === undefined) return
-          const action = linkAction(props.doc, link.href, props.byPath)
-          if (action.kind === "open") props.onOpen(action.path, action.anchor)
-          else if (action.kind === "url") props.onOpenUrl(action.url)
-          else if (action.kind === "anchor") {
-            const target = root?.querySelector(`[id="${CSS.escape(action.id)}"]`)
-            if (target) scrollToTop(target)
-          }
+          run(linkAction(props.doc, link.href, props.byPath))
         }}
       >
         {link.children}
@@ -97,15 +104,21 @@ export function MarkdownBody(props: MarkdownBodyProps) {
     return <source {...rest} srcset={srcset(source.srcset)} />
   }
 
+  function BodyMermaid(figure: ElementProps & { source?: string }) {
+    const onLink = (href: string) =>
+      void diagramLinkAction(props.doc, href, props.byPath, resolveLink).then(run, (e: unknown) => console.error(e))
+    return <MermaidDiagram source={figure.source ?? ""} onLink={onLink} />
+  }
+
   const content = createMemo(() =>
-    toJsxRuntime(markdownToHast(props.markdown), {
+    toJsxRuntime(props.tree, {
       Fragment,
       jsx,
       jsxs,
       elementAttributeNameCase: "html",
       stylePropertyNameCase: "css",
       // 型は React の JSX を前提にしているので、Solid の部品は合わない。props の形は html の名前（class・srcset）
-      components: { a: BodyLink, img: BodyImage, source: BodySource } as never,
+      components: { a: BodyLink, img: BodyImage, source: BodySource, [mermaidTag]: BodyMermaid } as never,
     }),
   )
 
