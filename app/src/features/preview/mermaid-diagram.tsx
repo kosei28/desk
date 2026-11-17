@@ -21,6 +21,18 @@ const diagram = css({
   "& > svg": { display: "block", marginInline: "auto" },
 })
 
+/** 図をその場で描く手（図の要素から引く）。描いた図は、今の幅で組み直す */
+const layouts = new WeakMap<Element, () => void>()
+
+/**
+ * root の中の図の高さを、今の幅で決める。まだ描いていない図は描き、描いた図は幅が変わっていれば組み直す。
+ * 図は島に置かれてから描き、幅が変わったら次のフレームで組み直す（隠れたタブの図は幅 0 のまま描いてある）ので、
+ * 本文の中の位置を使う前（見出しへ送る前、タブの位置を戻す前）に呼ぶ。隠れている図は何もしない
+ */
+export function drawDiagrams(root: ParentNode) {
+  for (const element of root.querySelectorAll("[data-mermaid]")) layouts.get(element)?.()
+}
+
 export type MermaidDiagramProps = {
   /** 図の元の文字（```mermaid の中身） */
   source: string
@@ -36,15 +48,22 @@ export function MermaidDiagram(props: MermaidDiagramProps) {
   let element: HTMLDivElement | undefined
   let mounted: Mounted | undefined
 
-  // 島に置かれてから描く（幅と書体を測る）
-  onSettled(() => {
-    if (element) mounted = mount(element, props.source, { zoom: false, onError: () => {} })
-  })
+  const draw = () => {
+    if (!element) return
+    if (mounted) mounted.refresh()
+    else mounted = mount(element, props.source, { zoom: false, onError: () => {} })
+  }
+  // 島に置かれてから描く（幅と書体を測る）。その前に drawDiagrams が描いていれば、幅が同じなら何もしない
+  onSettled(draw)
   onCleanup(() => mounted?.destroy())
 
   return (
     <div
-      ref={element}
+      ref={(el) => {
+        element = el
+        layouts.set(el, draw)
+      }}
+      data-mermaid
       class={diagram}
       onClick={(event: MouseEvent) => {
         const link = (event.target as Element).closest?.("a")

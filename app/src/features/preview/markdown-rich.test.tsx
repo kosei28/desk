@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Doc } from "../../data/types"
 import { markdownToHast } from "./markdown"
 import { MarkdownBody } from "./markdown-body"
+import { drawDiagrams } from "./mermaid-diagram"
 // rich.ts が CSS を読む katex
 import katex from "katex"
 
@@ -167,6 +168,17 @@ describe("mermaid の図", () => {
     expect(svg).not.toBeNull()
     expect([...svg!.querySelectorAll(".pele-label")].map((label) => label.textContent)).toEqual(["献立", "印刷"])
     expect(container.querySelector("pre, code")).toBeNull()
+  })
+
+  // 島に置かれる前に描く順と、隠れていた図を今の幅で組み直すのは、jsdom では作れない（render が onSettled まで済ませ、幅が無い）。
+  // ヘッドレスの Chromium で確かめる
+  it("drawDiagrams は、幅が変わっていない図を描き直さない", async () => {
+    const { container } = await show("```mermaid\nflowchart LR\n  A --> B\n```")
+    const svg = container.querySelector("svg.pele")
+    drawDiagrams(container)
+    flush()
+    expect(container.querySelectorAll("svg.pele")).toHaveLength(1)
+    expect(container.querySelector("svg.pele")).toBe(svg)
   })
 
   it("書き損じた図は、その場にエラーを文字で出す", async () => {
