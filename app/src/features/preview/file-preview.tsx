@@ -37,7 +37,9 @@ export type FilePreviewProps = {
 /**
  * 島の中身。見出し（h1）と description の下に、Markdown なら本文、画像なら画像を出す。ほかのファイルは見出しだけ。
  * 本文は doc が変わるたび（ツリーが変わって索引をもらい直すたび）に読み直す。中身が同じなら描き直さない。
- * 本文は、数式・コードの色・図の種類まで読み終えた木にしてから描く（描いた後で中身の高さが変わらない）。
+ * 本文は、数式・図の種類まで読み終えた木にしてから描く（描いた後で中身の高さが変わらない）。コードの色は、初めての言語なら
+ * 本文を待たせず、描いた後で付ける（markdown.ts の highlightLater。色が付いても高さは変わらない）。
+ * 本文を描くまでは、島の見出しも含めて中身を隠す。見出しへ送るときと同じく、見出しだけの絵を出さずに、本文まで一度に出す
  */
 export function FilePreview(props: FilePreviewProps) {
   let root: HTMLDivElement | undefined
@@ -87,6 +89,15 @@ export function FilePreview(props: FilePreviewProps) {
   // 中身を描き終えたか（Markdown なら本文が届いて木にして描いた。空の本文も、読めなかったときも終わり）
   const drawn = createMemo(() => !props.doc.is_md || tree() !== undefined || failed())
 
+  // 中身を見せてよいか。drawn と同じく一度立てば下りない（読み直しの間は tree も前の木のまま）。
+  // drawn をそのまま使わないのは、見せるのを、図を今の幅で描いた後にそろえるため（図より下が後から動かないように）
+  const [shown, setShown] = createSignal(false)
+  createEffect(drawn, (done) => {
+    if (!done || !root) return
+    drawDiagrams(root)
+    setShown(true)
+  })
+
   // anchor があれば、描いたのと同じ流れの中で（絵を出す前に）その id へ送る。当たらなければ上へ。
   // 次のフレームまで待つと、上から（または前の位置で）描いた絵が 1 枚出てチラつく
   createEffect(
@@ -104,7 +115,11 @@ export function FilePreview(props: FilePreviewProps) {
 
   // 見出しと description の組と本文の間は、本文の節と同じ間（h2 の前の 40px）
   return (
-    <div ref={root} class={css({ display: "flex", flexDirection: "column", gap: "10" })}>
+    <div
+      ref={root}
+      class={css({ display: "flex", flexDirection: "column", gap: "10" })}
+      style={{ visibility: shown() ? undefined : "hidden" }}
+    >
       <header class={css({ display: "grid", gap: "2" })}>
         <h1 class={css({ textStyle: "title" })}>{props.title}</h1>
         <Show when={props.doc.description}>

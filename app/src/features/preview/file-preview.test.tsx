@@ -1,6 +1,6 @@
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks"
 import { cleanup, render } from "@solidjs/testing-library"
-import { flush } from "solid-js"
+import { createSignal, flush } from "solid-js"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Doc } from "../../data/types"
 import { FilePreview } from "./file-preview"
@@ -124,5 +124,86 @@ describe("FilePreview の anchor", () => {
     flush()
     expect(scrolls).toEqual([{ top: 0 }])
     expect(onAnchorDone).toHaveBeenCalledOnce()
+  })
+})
+
+describe("FilePreview を描き終えるまで隠す", () => {
+  /** 本文のコマンドを、返す番が来るまで待たせる。返す番は release で 1 つずつ進める */
+  function holdBodies(fail = false, body = "本文\n") {
+    const waiting: (() => void)[] = []
+    mockIPC(async (cmd) => {
+      if (cmd !== "body") return
+      await new Promise<void>((resolve) => waiting.push(resolve))
+      if (fail) throw new Error("読めない")
+      return body
+    })
+    return () => waiting.shift()?.()
+  }
+  const show = (target: () => Doc) =>
+    render(() => (
+      <FilePreview doc={target()} title="印刷のレイアウト" byPath={new Map()} onOpen={() => {}} onOpenUrl={() => {}} />
+    ))
+  // 島の見出しを含む、中身の全体
+  const contents = (container: HTMLElement) => container.firstElementChild as HTMLElement
+
+  it("本文が届いて描くまでは、島の見出しも隠し、描いたらフレームを待たずに見せる", async () => {
+    const release = holdBodies()
+    const { container, findByText } = show(() => doc(LAYOUT))
+    flush()
+    const whole = contents(container)
+    expect(whole.style.visibility).toBe("hidden")
+
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 0)
+    release()
+    await findByText("本文")
+    await vi.waitFor(() => expect(whole.style.visibility).toBe(""))
+  })
+
+  it("初めての言語のコードは、色を待たずに本文と一緒に見せ、色は後から付く（待つ時間を延ばさない）", async () => {
+    const release = holdBodies(false, "本文\n\n```ts\nconst a = 1\n```\n")
+    const { container } = show(() => doc(LAYOUT))
+    flush()
+    const whole = contents(container)
+    // 見せた瞬間の中身を覚える
+    const atShow: { pre: boolean; colored: boolean }[] = []
+    new MutationObserver(() => {
+      if (whole.style.visibility === "")
+        atShow.push({ pre: whole.querySelector("pre") !== null, colored: whole.querySelector("pre.shiki") !== null })
+    }).observe(whole, { attributes: true, attributeFilter: ["style"] })
+    release()
+    await vi.waitFor(() => expect(atShow.length).toBeGreaterThan(0))
+    expect(atShow[0]).toEqual({ pre: true, colored: false })
+    await vi.waitFor(() => expect(whole.querySelector("pre.shiki")).not.toBeNull(), { timeout: 5000 })
+  })
+
+  it("一度見せたら、読み直している間も前の中身を見せたままにする", async () => {
+    const release = holdBodies()
+    const [target, setTarget] = createSignal(doc(LAYOUT))
+    const { container, findByText } = show(target)
+    flush()
+    release()
+    await findByText("本文")
+    const whole = contents(container)
+    await vi.waitFor(() => expect(whole.style.visibility).toBe(""))
+
+    // ツリーが変わって索引をもらい直した（同じファイルの別のオブジェクト）
+    setTarget(doc(LAYOUT, { description: "読み直し中" }))
+    flush()
+    expect(whole.style.visibility).toBe("")
+  })
+
+  it("Markdown でないファイルと、本文を読めなかったときは隠したままにしない", async () => {
+    const { container } = show(() => doc(SAMPLE, { is_md: false, asset: true }))
+    flush()
+    expect(contents(container).style.visibility).toBe("")
+    cleanup()
+
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const release = holdBodies(true)
+    const failed = show(() => doc(LAYOUT))
+    flush()
+    release()
+    const whole = contents(failed.container)
+    await vi.waitFor(() => expect(whole.style.visibility).toBe(""))
   })
 })

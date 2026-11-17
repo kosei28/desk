@@ -434,13 +434,14 @@ describe("App の右の列", () => {
     columnRow("用紙の大きさを決める").focus()
     expect(press(" ").defaultPrevented).toBe(true)
     expect(tabNames()).toEqual(["献立を印刷できるようにする", "用紙の大きさを決める"])
-    expect(heading()).toBe("用紙の大きさを決める")
+    // 開いたタブは本文を描き終えてから見せる
+    await vi.waitFor(() => expect(heading()).toBe("用紙の大きさを決める"))
 
     await click(within(tabList()).getAllByRole("tab")[0])
     columnRow("印刷のレイアウト").focus()
     expect(press("Enter").defaultPrevented).toBe(true)
     expect(tabNames()).toEqual(["献立を印刷できるようにする", "印刷のレイアウト", "用紙の大きさを決める"])
-    expect(heading()).toBe("印刷のレイアウト")
+    await vi.waitFor(() => expect(heading()).toBe("印刷のレイアウト"))
   })
 
   it("閉じた見出しは、ほかのファイルに移っても閉じたまま", async () => {
@@ -541,7 +542,7 @@ describe("App の島", () => {
     flush()
     expect(event.defaultPrevented).toBe(true)
     expect(tabNames()).toEqual(["献立を印刷できるようにする", "印刷のレイアウト"])
-    expect(heading()).toBe("印刷のレイアウト")
+    await vi.waitFor(() => expect(heading()).toBe("印刷のレイアウト"))
   })
 
   it("開いているタブに移っても、本文を読み直さず、描いたまま出す", async () => {
