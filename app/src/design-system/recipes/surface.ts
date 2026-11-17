@@ -14,6 +14,9 @@ export const surfaceRecipe = defineRecipe({
     borderRadius: "surface",
     boxShadow: "surface",
     overflow: "auto",
+    // 中の絶対配置のもの（読み上げだけの脚注の見出しなど）の基準をこの面にし、面の中に収める。
+    // 基準が面の外だと、面に切られずに文書の高さを伸ばし、窓全体がスクロールできてしまう
+    position: "relative",
     display: "grid",
     gridTemplateColumns: "minmax(0, token(sizes.measure))",
     justifyContent: "center",

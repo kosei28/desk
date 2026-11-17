@@ -8,7 +8,7 @@ const check = (stroke: string) =>
 export const proseRecipe = defineRecipe({
   className: "prose",
   description:
-    "Markdown の本文。読む面に置く。見出しは丸い書体で、h1 28・h2 20・h3 16、h4 から下は本文の大きさの太字。行は 40em まで。区切りの線は表の行・区切り・引用だけに引く",
+    "Markdown の本文。読む面に置く。見出しは丸い書体で、h1 28・h2 20・h3 16、h4 から下は本文の大きさの太字。行は 40em まで。区切りの線は表の行・区切り・引用・脚注の上だけに引く",
   base: {
     maxWidth: "measure",
     textStyle: "reading",
@@ -99,5 +99,14 @@ export const proseRecipe = defineRecipe({
     },
     "& th": { fontWeight: "bold" },
     "& img": { maxWidth: "full", height: "auto", borderRadius: "surface" },
+    // 脚注は、本文の続きと分ける区切りの線（hr と同じ形）の下に置く。見出し（「脚注」）は読み上げだけに残す。GitHub と同じ
+    "& [data-footnotes]": {
+      marginBlockStart: "8",
+      paddingBlockStart: "8",
+      borderBlockStartWidth: "hairline",
+      borderBlockStartStyle: "solid",
+      borderBlockStartColor: "separator",
+    },
+    "& .sr-only": { srOnly: true },
   },
 })
