@@ -159,19 +159,37 @@ const classesOf = (node: Element) => (Array.isArray(node.properties.className) ?
 /** 数式（remark-math と ```math が出す code.language-math） */
 const isMath = (node: Element) => node.tagName === "code" && classesOf(node).includes("language-math")
 
-/** 言語を書いたコードの塊（pre > code.language-…） */
-const isCodeWithLanguage = (node: Element) => {
+/** コードの塊（pre > code.language-…）の言語の名前。言語を書いていなければ undefined */
+function languageOf(node: Element): string | undefined {
   const code = node.tagName === "pre" ? node.children[0] : undefined
-  return (
-    code?.type === "element" &&
-    code.tagName === "code" &&
-    classesOf(code).some((c) => String(c).startsWith("language-"))
-  )
+  if (code?.type !== "element" || code.tagName !== "code") return undefined
+  const name = classesOf(code).find((c) => String(c).startsWith("language-"))
+  return name === undefined ? undefined : String(name).slice("language-".length)
+}
+
+/** 言語を書いたコードの塊 */
+const isCodeWithLanguage = (node: Element) => languageOf(node) !== undefined
+
+/** 言語を書いたコードの塊を全部 */
+function codeBlocks(parent: Root | Element, out: Element[] = []): Element[] {
+  for (const node of parent.children) {
+    if (node.type !== "element") continue
+    if (isCodeWithLanguage(node)) out.push(node)
+    else codeBlocks(node, out)
+  }
+  return out
 }
 
 /**
+ * 色を後から付けるコードの塊の印（pre の data-highlight 属性）。本文を先に出し、塊を描いた後で CodeBlock が色を付ける
+ */
+export const highlightLater = "data-highlight"
+
+/**
  * 数式（KaTeX）とコードの色（Shiki）。どちらも大きいので、本文にあるときだけ読む（rich.ts）。
- * 数式を先にする（```math の pre をコードとして色付けしない）
+ * 数式を先にする（```math の pre をコードとして色付けしない）。
+ * コードの色は、どの言語もすぐ付けられるときだけここで付ける。初めての言語があれば（色の決まりの組み立てに 0.1〜0.2 秒かかる）、
+ * 本文を待たせず、塊に印を付けて、描いた後で付ける
  */
 function rehypeRich() {
   return async (tree: Root, file: unknown) => {
@@ -179,8 +197,34 @@ function rehypeRich() {
     if (!math && !some(tree, isCodeWithLanguage)) return
     const rich = await import("./rich")
     if (math) rich.katex(tree, file)
-    if (some(tree, isCodeWithLanguage)) await rich.highlight(tree)
+    const blocks = codeBlocks(tree)
+    if (blocks.length === 0) return
+    const languages = [...new Set(blocks.map((pre) => languageOf(pre)!))]
+    if (rich.ready(languages)) await rich.highlight(tree, languages)
+    else for (const pre of blocks) pre.properties.dataHighlight = ""
   }
+}
+
+/**
+ * コード 1 つに色を付けた塊（pre.shiki）。本文の木にするときと同じ形で作る。色を付けられない言語なら undefined。
+ * 印（highlightLater）の付いた塊を、描いた後で CodeBlock が色を付けるのに使う
+ */
+export async function highlightCode(language: string, text: string): Promise<Element | undefined> {
+  const pre: Element = {
+    type: "element",
+    tagName: "pre",
+    properties: {},
+    children: [
+      { type: "element", tagName: "code", properties: { className: [`language-${language}`] }, children: [{ type: "text", value: text }] },
+    ],
+  }
+  const root: Root = { type: "root", children: [pre] }
+  const rich = await import("./rich")
+  await rich.highlight(root, [language])
+  // Shiki は塊を、pre.shiki 1 つを持つ root に置き換える
+  const out = root.children[0] as Root | RootContent | undefined
+  const colored = out?.type === "root" ? out.children[0] : out
+  return colored?.type === "element" && colored.tagName === "pre" && colored !== pre ? colored : undefined
 }
 
 /** 消毒の許可リスト。既定から、href の scheme だけを図と同じ並びにする */

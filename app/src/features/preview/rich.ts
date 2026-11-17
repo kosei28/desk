@@ -28,18 +28,22 @@ const createHighlighter = createBundledHighlighter({
 })
 
 let shiki: Promise<Transform> | undefined
+/** 作り終えた Shiki */
+let loaded: Transform | undefined
+/** 色を付けたことのある言語（書いてあるままの名前）。色の決まりを組み立て済みなので、次からはすぐ付く */
+const warm = new Set<string>()
 
 /** Shiki を作る。作れなかったら覚えず、次の本文でもう一度作る */
 function loadShiki() {
-  const loading = createHighlighter({ themes: ["github-light", "github-dark"], langs: [] }).then(
-    (highlighter) =>
-      rehypeShikiFromHighlighter(highlighter, {
-        themes: { light: "github-light", dark: "github-dark" },
-        defaultColor: false,
-        lazy: true,
-        onError: () => {},
-      }) as Transform,
-  )
+  const loading = createHighlighter({ themes: ["github-light", "github-dark"], langs: [] }).then((highlighter) => {
+    loaded = rehypeShikiFromHighlighter(highlighter, {
+      themes: { light: "github-light", dark: "github-dark" },
+      defaultColor: false,
+      lazy: true,
+      onError: () => {},
+    }) as Transform
+    return loaded
+  })
   loading.catch(() => {
     if (shiki === loading) shiki = undefined
   })
@@ -47,10 +51,19 @@ function loadShiki() {
 }
 
 /**
- * 言語を書いたコード（pre > code.language-…）に色を付ける。色はライトとダークの両方を CSS 変数で持ち、
- * どちらを使うかは prose のレシピが決める（明暗が替わっても描き直さない）。読めない言語は色を付けずに残す
+ * languages（本文に書いてある言語の名前）のコードに、すぐ色を付けられるか。
+ * Shiki を作り終え、どの言語も一度色を付けたことがあればすぐ付く（数ミリ秒）。
+ * まだなら、言語ごとに色の決まりを組み立てるので、初回は 0.1〜0.2 秒ほどかかる
  */
-export async function highlight(tree: Root) {
+export const ready = (languages: readonly string[]) => loaded !== undefined && languages.every((l) => warm.has(l))
+
+/**
+ * 言語を書いたコード（pre > code.language-…）に色を付ける。色はライトとダークの両方を CSS 変数で持ち、
+ * どちらを使うかは prose のレシピが決める（明暗が替わっても描き直さない）。読めない言語は色を付けずに残す。
+ * languages は tree の中のコードの言語の名前（色を付けた後で、すぐ付く言語として覚える）
+ */
+export async function highlight(tree: Root, languages: readonly string[]) {
   shiki ??= loadShiki()
   await (await shiki)(tree)
+  for (const language of languages) warm.add(language)
 }
