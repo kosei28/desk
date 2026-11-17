@@ -138,8 +138,9 @@ describe("数式", () => {
 describe("コードの色", () => {
   it("言語を書いたコードは、ライトとダークの色を CSS 変数で持つ（色は prose のレシピが選ぶ）", async () => {
     const { container } = await show("```ts\nconst a: number = 1\n```")
+    // 初めての言語なら、描いた後で色を付ける
+    await vi.waitFor(() => expect(container.querySelector("pre")?.classList.contains("shiki")).toBe(true))
     const pre = container.querySelector("pre")
-    expect(pre?.classList.contains("shiki")).toBe(true)
     expect(pre?.textContent).toBe("const a: number = 1")
     const keyword = [...container.querySelectorAll<HTMLElement>("pre span span")].find((s) => s.textContent === "const")
     expect(keyword?.style.getPropertyValue("--shiki-light")).toMatch(/^#/)
@@ -150,11 +151,15 @@ describe("コードの色", () => {
 
   it("言語の別名（sh・js）も読む", async () => {
     const { container } = await show("```sh\necho hi\n```\n\n```js\nlet x\n```")
-    expect([...container.querySelectorAll("pre")].map((pre) => pre.classList.contains("shiki"))).toEqual([true, true])
+    await vi.waitFor(() =>
+      expect([...container.querySelectorAll("pre")].map((pre) => pre.classList.contains("shiki"))).toEqual([true, true]),
+    )
   })
 
   it("言語の無いコード、知らない言語、本文の中のコードには色を付けない", async () => {
     const { container } = await show("```\nplain\n```\n\n```nosuchlang\nx\n```\n\n本文の `code`")
+    // 描いた後で色を付けようとするので、少し待ってから見る
+    await new Promise((resolve) => setTimeout(resolve, 50))
     expect(container.querySelector(".shiki")).toBeNull()
     expect([...container.querySelectorAll("pre")].map((pre) => pre.textContent)).toEqual(["plain\n", "x\n"])
     expect(container.querySelector("p code")?.textContent).toBe("code")
