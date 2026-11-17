@@ -54,6 +54,10 @@ describe("diagramLinkAction", () => {
       url: "https://example.com/a",
     })
     expect(await diagramLinkAction(from, "#まとめ", byPath, resolve)).toEqual({ kind: "anchor", id: "user-content-まとめ" })
+    expect(await diagramLinkAction(from, "XMPP:planner@example.com", byPath, resolve)).toEqual({
+      kind: "url",
+      url: "XMPP:planner@example.com",
+    })
     expect(await diagramLinkAction(from, "ftp://example.com/a", byPath, resolve)).toEqual({ kind: "none" })
     expect(resolve).not.toHaveBeenCalled()
   })

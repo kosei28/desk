@@ -8,12 +8,13 @@ import { toString as hastToString } from "hast-util-to-string"
 import type { Heading, Literal, Root as MdastRoot, Text } from "mdast"
 import { detectType, load as loadDiagram } from "pele/lazy"
 import rehypeRaw from "rehype-raw"
-import rehypeSanitize from "rehype-sanitize"
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import remarkParse from "remark-parse"
 import remarkRehype from "remark-rehype"
 import { unified } from "unified"
+import { urlSchemes } from "../../data/url-schemes"
 
 /** 島の見出しに出すので本文から外す見出しの、元の文字の中の位置（hast の position.start.offset と同じ数え方） */
 type TitleData = { titleOffset?: number }
@@ -182,6 +183,9 @@ function rehypeRich() {
   }
 }
 
+/** 消毒の許可リスト。既定から、href の scheme だけを図と同じ並びにする */
+const sanitizeSchema = { ...defaultSchema, protocols: { ...defaultSchema.protocols, href: urlSchemes } }
+
 const processor = unified()
   .use(remarkParse)
   .use(remarkGfm)
@@ -197,10 +201,10 @@ const processor = unified()
   })
   .use(rehypeRaw)
   .use(rehypeHeadingIds)
-  // 既定の許可リストのまま。script・style・iframe・class・style 属性・on… は消え、
-  // href・src は http・https・mailto（a だけ）・相対だけが残る。id・name には user-content- が付く。
+  // 既定の許可リストに、href の scheme だけ図・右の列と同じ並び（urlSchemes）を許す。script・style・iframe・class・style 属性・on… は消え、
+  // href は urlSchemes と相対、src は http・https と相対だけが残る。id・name には user-content- が付く。
   // code の language-… の class は残る（数式の language-math、コードの言語）
-  .use(rehypeSanitize)
+  .use(rehypeSanitize, sanitizeSchema)
   .use(rehypeMermaid)
   .use(rehypeRich)
 

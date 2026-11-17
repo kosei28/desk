@@ -1,5 +1,6 @@
 import type { Status } from "../../components/status-mark"
 import type { Doc, FrontmatterValue } from "../../data/types"
+import { isUrl } from "../../data/url-schemes"
 import { compareFiles, fileEntry, statuses } from "../file-tree/desk-tree"
 import type { FileEntry } from "../file-tree/file-tree"
 
@@ -16,7 +17,7 @@ export type InspectorFile = FileEntry & {
 export type InspectorValue = {
   label: string
   value: string
-  /** url は http(s) の URL 1 つ（押すとブラウザで開く）。path はパスとブランチ名（repo・branch・ベースブランチ・worktree。等幅） */
+  /** url は外の URL 1 つ（scheme は本文と同じ urlSchemes。押すと既定のアプリで開く）。path はパスとブランチ名（repo・branch・ベースブランチ・worktree。等幅） */
   form: "text" | "url" | "path"
 }
 
@@ -100,8 +101,6 @@ const collator = new Intl.Collator("ja", { numeric: true })
 
 const textOf = (value: FrontmatterValue): string =>
   value === null ? "" : typeof value === "string" ? value : value.join(", ")
-
-const isUrl = (value: string) => /^https?:\/\/\S+$/i.test(value)
 
 /** コードのうち、パスとブランチ名として出すキー */
 const pathKeys: readonly string[] = ["repo", "branch", "base", "worktree"]

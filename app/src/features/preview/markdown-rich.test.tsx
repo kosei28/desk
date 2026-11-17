@@ -226,6 +226,37 @@ describe("mermaid の図", () => {
     expect(onOpenUrl).toHaveBeenCalledTimes(1)
   })
 
+  it("図の中も本文と同じ scheme（irc・ircs・xmpp を足したもの）を残して開き、ほかの scheme の行き先は消す", async () => {
+    const { container, onOpenUrl, onOpen } = await show(
+      [
+        "```mermaid",
+        "flowchart LR",
+        "  A[電話] --> B[チャンネル] --> C[暗号] --> D[チャット] --> E[Slack]",
+        '  click A "tel:+81-3-0000-0000"',
+        '  click B "irc://irc.example.com/recipes"',
+        '  click C "ircs://irc.example.com/recipes"',
+        '  click D "xmpp:planner@example.com"',
+        '  click E "slack://open"',
+        "```",
+      ].join("\n"),
+    )
+    const targets = [...container.querySelectorAll("svg a")].map(
+      (link) => link.getAttribute("href") ?? link.getAttribute("xlink:href") ?? "",
+    )
+    expect(targets).toEqual([
+      "tel:+81-3-0000-0000",
+      "irc://irc.example.com/recipes",
+      "ircs://irc.example.com/recipes",
+      "xmpp:planner@example.com",
+    ])
+    for (const link of container.querySelectorAll("svg a")) {
+      link.querySelector("text")!.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    }
+    await vi.waitFor(() => expect(onOpenUrl).toHaveBeenCalledTimes(4))
+    expect(onOpenUrl.mock.calls.map(([url]) => url)).toEqual(targets)
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
   it("図の中の javascript: の行き先は、pele が消す", async () => {
     const { container, onOpenUrl, onOpen } = await show(
       '```mermaid\nflowchart LR\n  A[押す] --> B[先]\n  click A "javascript:alert(1)"\n```',

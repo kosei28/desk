@@ -22,5 +22,5 @@ export const getBody = (path: string) => invoke<string>("body", { path })
  */
 export const resolveLink = (from: string, raw: string) => invoke<Link>("resolve_link", { from, raw })
 
-/** 外の URL（http・https・mailto）を既定のアプリで開く。ほかの scheme は Rust の側で断る */
+/** 外の URL（url-schemes.ts の urlSchemes）を既定のアプリで開く。ほかの scheme は Rust の側で断る */
 export const openUrl = (url: string) => invoke<void>("open_url", { url })
