@@ -51,7 +51,8 @@ impl Desk {
         Ok(())
     }
 
-    fn root(&self) -> Option<PathBuf> {
+    /// 開いているツリーのルート。
+    pub fn root(&self) -> Option<PathBuf> {
         self.opened.lock().unwrap().as_ref().map(|o| o.root.clone())
     }
 }

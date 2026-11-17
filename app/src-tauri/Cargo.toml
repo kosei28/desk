@@ -14,6 +14,8 @@ tauri-build = { version = "2.7.4", features = [] }
 # 読むだけなので feature write は有効にしない
 desk-core = { path = "../../core" }
 notify-debouncer-mini = "0.7.0"
+# 画像の scheme（src/image.rs）の URL の %xx を戻す。core と同じ版
+percent-encoding = "2.3.2"
 serde = "1.0.229"
 tauri = { version = "2.12.5", features = [] }
 # フォルダーを選ぶ窓は Rust の側から開く。webview には dialog の権限を渡さない
