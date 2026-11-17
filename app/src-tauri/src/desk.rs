@@ -6,7 +6,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use desk_core::{Doc, Tree};
+use desk_core::link;
+use desk_core::{Doc, Link, Tree};
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_dialog::DialogExt;
@@ -101,6 +102,19 @@ pub fn index(desk: State<'_, Desk>) -> Result<Option<Index>, String> {
 pub fn body(desk: State<'_, Desk>, path: String) -> Result<String, String> {
     let root = desk.root().ok_or("ツリーを開いていない")?;
     Index::load(&root)?.body(&path)
+}
+
+/// 本文の中の、core が読まないリンク（mermaid の図の `click` の先）を、core の本文のリンクと同じ決まりで解く。
+/// from はリンクを書いたファイルのルートからのパス。ツリーは読まない（先があるかは webview が索引で見る）。
+#[tauri::command]
+pub fn resolve_link(from: String, raw: String) -> Link {
+    let mut l = Link {
+        key: "body".to_string(),
+        raw,
+        ..Link::default()
+    };
+    link::resolve(&from, &mut l);
+    l
 }
 
 /// フォルダーを選ぶ窓を出し、選んだフォルダーのあるツリーを開いて覚える。選ばずに閉じたら何もしない。
@@ -218,5 +232,20 @@ mod tests {
             task["frontmatter"][0],
             serde_json::json!({ "key": "status", "value": "todo" })
         );
+    }
+
+    #[test]
+    fn resolve_link_uses_the_same_rules_as_body_links() {
+        let l = resolve_link(
+            "projects/misc/artifacts/flow.md".to_string(),
+            "../tasks/2026-01-02-tidy.md#%E6%89%8B%E9%A0%86".to_string(),
+        );
+        assert_eq!(l.form, desk_core::LinkForm::Relative);
+        assert_eq!(l.target, "projects/misc/tasks/2026-01-02-tidy.md");
+        assert_eq!(l.anchor, "%E6%89%8B%E9%A0%86");
+        let l = resolve_link("README.md".to_string(), "https://example.com".to_string());
+        assert_eq!(l.form, desk_core::LinkForm::External);
+        let l = resolve_link("README.md".to_string(), "../../outside.md".to_string());
+        assert_eq!(l.target, "../../outside.md");
     }
 }

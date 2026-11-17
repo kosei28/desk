@@ -13,6 +13,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@shikijs/rehype": "4.6.0",
     "@solidjs/h": "2.0.0-rc.21",
     "@solidjs/web": "2.0.0-rc.21",
     "@tauri-apps/api": "2.12.4",
@@ -23,12 +24,17 @@
     "github-slugger": "2.0.0",
     "hast-util-to-jsx-runtime": "2.3.7",
     "hast-util-to-string": "3.0.1",
+    "katex": "0.16.47",
     "micromark-util-sanitize-uri": "2.0.1",
+    "pele": "1.13.0",
+    "rehype-katex": "7.0.1",
     "rehype-raw": "7.0.0",
     "rehype-sanitize": "6.0.0",
     "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
     "remark-parse": "11.0.0",
     "remark-rehype": "11.1.2",
+    "shiki": "4.6.0",
     "solid-js": "2.0.0-rc.21",
     "unified": "11.0.5"
   },

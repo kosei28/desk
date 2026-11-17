@@ -2,6 +2,7 @@ import { cleanup, render } from "@solidjs/testing-library"
 import { flush } from "solid-js"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { Doc, Link } from "../../data/types"
+import { markdownToHast } from "./markdown"
 import { MarkdownBody } from "./markdown-body"
 
 const doc = (path: string, fields: Partial<Doc> = {}): Doc => ({
@@ -49,13 +50,14 @@ const docs = [
   doc("projects/recipe-app/inbox/2026-11-12-photo.png", { is_md: false }),
 ]
 
-function show(markdown: string, links: Link[] = []) {
+async function show(markdown: string, links: Link[] = []) {
+  const tree = await markdownToHast(markdown)
   const current = doc(here, { links })
   const byPath = new Map([current, ...docs].map((d) => [d.path, d]))
   const onOpen = vi.fn<(path: string, anchor?: string) => void>()
   const onOpenUrl = vi.fn<(url: string) => void>()
   const result = render(() => (
-    <MarkdownBody doc={current} markdown={markdown} byPath={byPath} onOpen={onOpen} onOpenUrl={onOpenUrl} />
+    <MarkdownBody doc={current} tree={tree} byPath={byPath} onOpen={onOpen} onOpenUrl={onOpenUrl} />
   ))
   flush()
   return Object.assign(result, { onOpen, onOpenUrl })
@@ -71,8 +73,8 @@ function press(element: Element) {
 afterEach(cleanup)
 
 describe("MarkdownBody", () => {
-  it("GFM を描き、見出し（最初の # の見出し）は島の見出しに出すので本文に出さない", () => {
-    const { container } = show(
+  it("GFM を描き、見出し（最初の # の見出し）は島の見出しに出すので本文に出さない", async () => {
+    const { container } = await show(
       [
         "前置き",
         "",
@@ -107,26 +109,26 @@ describe("MarkdownBody", () => {
     expect(body.querySelector("a")?.getAttribute("href")).toBe("https://example.com/menu")
   })
 
-  it("# の見出しが無ければ、最初の見出しを外す", () => {
-    const { container } = show("## 進め方\n\n本文\n\n## 次")
+  it("# の見出しが無ければ、最初の見出しを外す", async () => {
+    const { container } = await show("## 進め方\n\n本文\n\n## 次")
     expect([...container.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(["次"])
   })
 
-  it("引用・箇条・脚注の中の見出しは数えない（core の見出しと同じ）", () => {
+  it("引用・箇条・脚注の中の見出しは数えない（core の見出しと同じ）", async () => {
     // 引用の中の # は見出しにならず、外の # の見出しを外す
-    const quoted = show("> # 引用の見出し\n\n# 本当の見出し\n\n本文")
+    const quoted = await show("> # 引用の見出し\n\n# 本当の見出し\n\n本文")
     expect([...quoted.container.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["引用の見出し"])
     expect(quoted.container.querySelector("blockquote h1")?.textContent).toBe("引用の見出し")
     cleanup()
     // 箇条・脚注の中にしか見出しが無ければ（島の見出しはファイル名）、何も外さない
-    const listed = show("- # 箇条の見出し\n\n本文[^1]\n\n[^1]: ## 脚注の見出し")
+    const listed = await show("- # 箇条の見出し\n\n本文[^1]\n\n[^1]: ## 脚注の見出し")
     expect(listed.container.querySelector("li h1")?.textContent).toBe("箇条の見出し")
     expect(listed.container.querySelector("[data-footnotes] li h2")?.textContent).toBe("脚注の見出し")
   })
 
-  it("生の HTML（details・div）で囲んだ見出しも、Markdown としてはルートの直下なので外す（core の見出しと同じ）", () => {
+  it("生の HTML（details・div）で囲んだ見出しも、Markdown としてはルートの直下なので外す（core の見出しと同じ）", async () => {
     for (const [tag, inside] of [["details", "<summary>開く</summary>\n\n"], ["div", ""]]) {
-      const { container } = show(`<${tag}>\n${inside}# 囲んだ見出し\n\n本文\n\n</${tag}>`)
+      const { container } = await show(`<${tag}>\n${inside}# 囲んだ見出し\n\n本文\n\n</${tag}>`)
       expect(container.querySelector(tag)).not.toBeNull()
       expect(container.querySelector("h1")).toBeNull()
       expect(container.textContent).toContain("本文")
@@ -134,8 +136,8 @@ describe("MarkdownBody", () => {
     }
   })
 
-  it("生の HTML は、GitHub とほぼ同じ許可リストで消毒して描く", () => {
-    const { container } = show(
+  it("生の HTML は、GitHub とほぼ同じ許可リストで消毒して描く", async () => {
+    const { container } = await show(
       [
         '<details open><summary>メモ</summary><kbd>⌘</kbd> と H<sub>2</sub>O</details>',
         "",
@@ -158,13 +160,13 @@ describe("MarkdownBody", () => {
     expect(links.find((a) => a.textContent === "印")?.id).toBe("user-content-top")
   })
 
-  it("中のファイルを指すリンクは、移らずに onOpen でそのファイルを開く。日本語や空白のパス、生の HTML の a も", () => {
+  it("中のファイルを指すリンクは、移らずに onOpen でそのファイルを開く。日本語や空白のパス、生の HTML の a も", async () => {
     const links = [
       bodyLink("../artifacts/print-layout.md#余白", "projects/recipe-app/artifacts/print-layout.md"),
       bodyLink("../artifacts/用紙 の比べ.md", "projects/recipe-app/artifacts/用紙 の比べ.md"),
       bodyLink("2026-11-10-decide-paper-size.md", "projects/recipe-app/tasks/2026-11-10-decide-paper-size.md"),
     ]
-    const { getByText, onOpen, onOpenUrl } = show(
+    const { getByText, onOpen, onOpenUrl } = await show(
       [
         "[レイアウト](../artifacts/print-layout.md#余白) と [比べ](<../artifacts/用紙 の比べ.md>)",
         "",
@@ -184,13 +186,13 @@ describe("MarkdownBody", () => {
     expect(onOpenUrl).not.toHaveBeenCalled()
   })
 
-  it("外の URL（http・https・mailto）は onOpenUrl で開き、切れたリンク・ツリーの外は何もしない", () => {
+  it("外の URL（http・https・mailto）は onOpenUrl で開き、切れたリンク・ツリーの外は何もしない", async () => {
     const links = [
       bodyLink("https://github.com/example/recipe-app/pull/128", "https://github.com/example/recipe-app/pull/128", "external"),
       bodyLink("../artifacts/missing.md", "projects/recipe-app/artifacts/missing.md"),
       bodyLink("../../../../outside.md", "../outside.md"),
     ]
-    const { getByText, onOpen, onOpenUrl } = show(
+    const { getByText, onOpen, onOpenUrl } = await show(
       [
         "[PR](https://github.com/example/recipe-app/pull/128) [メール](mailto:cook@example.com) https://example.com/裸",
         "",
@@ -209,17 +211,18 @@ describe("MarkdownBody", () => {
     expect(onOpen).not.toHaveBeenCalled()
   })
 
-  it("# のリンク（脚注など）は、いちばん近いスクロールする祖先（島）だけを動かして、本文の中のその場所へ送る", () => {
+  it("# のリンク（脚注など）は、いちばん近いスクロールする祖先（島）だけを動かして、本文の中のその場所へ送る", async () => {
     const current = doc(here)
     const byPath = new Map([current, ...docs].map((d) => [d.path, d]))
     const onOpen = vi.fn<(path: string) => void>()
     const onOpenUrl = vi.fn<(url: string) => void>()
     let island!: HTMLDivElement
+    const tree = await markdownToHast("本文[^1]\n\n[^1]: 注")
     // 外の箱（overflow: hidden）は動かさない
     const { getByText, container } = render(() => (
       <div style={{ overflow: "hidden" }}>
         <div ref={island} style={{ "overflow-y": "auto", "padding-top": "48px" }}>
-          <MarkdownBody doc={current} markdown={"本文[^1]\n\n[^1]: 注"} byPath={byPath} onOpen={onOpen} onOpenUrl={onOpenUrl} />
+          <MarkdownBody doc={current} tree={tree} byPath={byPath} onOpen={onOpen} onOpenUrl={onOpenUrl} />
         </div>
       </div>
     ))
@@ -247,7 +250,7 @@ describe("MarkdownBody", () => {
     }
   })
 
-  it("画像は、ローカルのファイルなら（ツリーの中のどこでも、外でも）Rust の scheme から、https ならそのまま読む。picture の source も", () => {
+  it("画像は、ローカルのファイルなら（ツリーの中のどこでも、外でも）Rust の scheme から、https ならそのまま読む。picture の source も", async () => {
     const links = [
       bodyLink("../artifacts/assets/print-sample.png", "projects/recipe-app/artifacts/assets/print-sample.png"),
       bodyLink("../artifacts/assets/print-sample@2x.png", "projects/recipe-app/artifacts/assets/print-sample@2x.png"),
@@ -258,7 +261,7 @@ describe("MarkdownBody", () => {
       bodyLink("https://example.com/a.png", "", "external"),
       bodyLink("https://example.com/b.png", "", "external"),
     ]
-    const { container } = show(
+    const { container } = await show(
       [
         "![見本](../artifacts/assets/print-sample.png) ![assets の外](../inbox/2026-11-12-photo.png) ![ツリーの外](../../../../photos/外.png)",
         "",
@@ -284,8 +287,8 @@ describe("MarkdownBody", () => {
     )
   })
 
-  it("見出しに GitHub と同じ id を付ける。島の見出しに出す見出しも数えるので、同じ文字の見出しの番号も GitHub と揃う", () => {
-    const { container } = show(
+  it("見出しに GitHub と同じ id を付ける。島の見出しに出す見出しも数えるので、同じ文字の見出しの番号も GitHub と揃う", async () => {
+    const { container } = await show(
       [
         "# 概要",
         "",
@@ -309,7 +312,8 @@ describe("MarkdownBody", () => {
 
 describe("MarkdownBody の見出しへのリンク", () => {
   /** 島（縦にスクロールする箱）の中に描く。島の上の端は 20、見出し「余白」は 520 にある */
-  function showInIsland(markdown: string) {
+  async function showInIsland(markdown: string) {
+    const tree = await markdownToHast(markdown)
     const current = doc(here)
     const byPath = new Map([current, ...docs].map((d) => [d.path, d]))
     let island!: HTMLDivElement
@@ -317,7 +321,7 @@ describe("MarkdownBody の見出しへのリンク", () => {
       <div ref={island} style={{ "overflow-y": "auto", "padding-top": "48px" }}>
         <MarkdownBody
           doc={current}
-          markdown={markdown}
+          tree={tree}
           byPath={byPath}
           onOpen={() => {}}
           onOpenUrl={() => {}}
@@ -336,8 +340,8 @@ describe("MarkdownBody の見出しへのリンク", () => {
 
   afterEach(() => vi.restoreAllMocks())
 
-  it("# 見出しのリンクは、本文の中のその見出しへ島を送る", () => {
-    const { getByText, scrolls } = showInIsland("# 題\n\n[余白へ](#余白)\n\n## 余白")
+  it("# 見出しのリンクは、本文の中のその見出しへ島を送る", async () => {
+    const { getByText, scrolls } = await showInIsland("# 題\n\n[余白へ](#余白)\n\n## 余白")
     expect(press(getByText("余白へ"))).toBe(true)
     expect(scrolls).toEqual([{ top: 100 + 500 - 48 }])
   })

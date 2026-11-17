@@ -38,16 +38,37 @@ function decode(s: string): string {
 /** # の後ろ（見出しや脚注の名前）を、本文の要素の id にする。消毒が付けた user-content- を足す */
 const anchorId = (anchor: string) => clobberPrefix + decode(anchor)
 
-/** 本文のリンク（a の href）を押したときにすること */
-export function linkAction(doc: Doc, href: string, byPath: ReadonlyMap<string, Doc>): LinkAction {
+/** 書いてある先（href）と、core がそれを解いたリンク（無ければ undefined）から、押したときにすることを決める */
+function actionOf(href: string, link: Link | undefined, byPath: ReadonlyMap<string, Doc>): LinkAction {
   if (href.startsWith("#")) return { kind: "anchor", id: anchorId(href.slice(1)) }
-  const link = bodyLink(doc, href)
   if (link?.form === "relative") {
     if (!byPath.has(link.target)) return { kind: "none" }
     return link.anchor ? { kind: "open", path: link.target, anchor: anchorId(link.anchor) } : { kind: "open", path: link.target }
   }
   if (/^(https?|mailto):/i.test(href.trim())) return { kind: "url", url: href.trim() }
   return { kind: "none" }
+}
+
+/** 本文のリンク（a の href）を押したときにすること */
+export function linkAction(doc: Doc, href: string, byPath: ReadonlyMap<string, Doc>): LinkAction {
+  return actionOf(href, href.startsWith("#") ? undefined : bodyLink(doc, href), byPath)
+}
+
+/** 書いてある先のうち、パスとして解くもの（# だけのものと、scheme の付いた URL は解かない） */
+const isPath = (href: string) => !href.startsWith("#") && !/^[a-z][a-z0-9+.-]*:/i.test(href)
+
+/**
+ * 図の中のリンク（mermaid の click の先）を押したときにすること。core の索引には無いので、
+ * パスはその場で core に解いてもらう（resolve。解く決まりは core だけが持つ）。ほかは本文のリンクと同じ
+ */
+export async function diagramLinkAction(
+  doc: Doc,
+  href: string,
+  byPath: ReadonlyMap<string, Doc>,
+  resolve: (from: string, raw: string) => Promise<Link>,
+): Promise<LinkAction> {
+  const raw = href.trim()
+  return actionOf(raw, isPath(raw) ? await resolve(doc.path, raw) : undefined, byPath)
 }
 
 /**
