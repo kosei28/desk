@@ -4,6 +4,7 @@
 
 import { normalizeUri } from "micromark-util-sanitize-uri"
 import type { Doc, Link } from "../../data/types"
+import { hasUrlScheme } from "../../data/url-schemes"
 
 /** 本文のリンクを押したときにすること */
 export type LinkAction =
@@ -13,7 +14,7 @@ export type LinkAction =
   | { kind: "url"; url: string }
   /** 同じ本文の中の id へ送る（消毒で id に付いた user-content- は付けたまま） */
   | { kind: "anchor"; id: string }
-  /** 何もしない（切れたリンク、ツリーの外、開けない scheme） */
+  /** 何もしない（切れたリンク、ツリーの外、urlSchemes に無い scheme） */
   | { kind: "none" }
 
 /** 消毒（rehype-sanitize）が id・name の頭に付ける文字 */
@@ -45,7 +46,7 @@ function actionOf(href: string, link: Link | undefined, byPath: ReadonlyMap<stri
     if (!byPath.has(link.target)) return { kind: "none" }
     return link.anchor ? { kind: "open", path: link.target, anchor: anchorId(link.anchor) } : { kind: "open", path: link.target }
   }
-  if (/^(https?|mailto):/i.test(href.trim())) return { kind: "url", url: href.trim() }
+  if (hasUrlScheme(href)) return { kind: "url", url: href.trim() }
   return { kind: "none" }
 }
 

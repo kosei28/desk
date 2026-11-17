@@ -1,13 +1,15 @@
 //! 外の URL を、既定のアプリ（ブラウザ・メール）で開く。
 //!
 //! webview の中では外のページへ移らない。開いてよいのは [`SCHEMES`] の URL だけで、ここで確かめる。
+//! 押されるのは本文と図の中のリンクと、右の列の URL（どれも同じ scheme だけを押せるようにしている）。
 
 use std::process::Command;
 
 use tauri::Url;
 
-/// 開いてよい scheme。
-const SCHEMES: &[&str] = &["http", "https", "mailto"];
+/// 開いてよい scheme。本文の消毒（rehype-sanitize）と図（pele）がリンクに残す既定の scheme を合わせたもの。
+/// TS の `urlSchemes`（src/data/url-schemes.ts）と同じ並びにする
+const SCHEMES: &[&str] = &["http", "https", "mailto", "tel", "irc", "ircs", "xmpp"];
 
 /// 開いてよい URL なら、解いたものを返す。
 fn checked(raw: &str) -> Result<Url, String> {
@@ -21,7 +23,7 @@ fn checked(raw: &str) -> Result<Url, String> {
     Ok(url)
 }
 
-/// 外の URL を既定のアプリで開く。http・https・mailto だけ。
+/// 外の URL を既定のアプリで開く。[`SCHEMES`] の URL だけ。
 #[tauri::command(async)]
 pub fn open_url(url: String) -> Result<(), String> {
     let url = checked(&url)?;
@@ -42,11 +44,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn opens_only_web_and_mail_urls() {
+    fn opens_only_the_link_schemes() {
         for ok in [
             "https://github.com/example/recipe-app/pull/128",
             "http://example.com/a",
             "mailto:someone@example.com",
+            "tel:+81-3-0000-0000",
+            "irc://irc.example.com/recipes",
+            "ircs://irc.example.com:6697/recipes",
+            "xmpp:planner@example.com",
         ] {
             assert!(checked(ok).is_ok(), "{ok}");
         }
@@ -54,6 +60,8 @@ mod tests {
             "file:///etc/passwd",
             "javascript:alert(1)",
             "x-apple.systempreferences:com.apple.preference.security",
+            "slack://open",
+            "ftp://example.com/a",
             "-a Calculator",
             "../tasks/a.md",
             "",

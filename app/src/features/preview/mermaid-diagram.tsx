@@ -1,6 +1,7 @@
 import { type Mounted, mount } from "pele/lazy"
 import { onCleanup, onSettled } from "solid-js"
 import { css } from "../../../styled-system/css"
+import { urlSchemes } from "../../data/url-schemes"
 
 // 図の色と書体は、本文と同じトークンから取る。明暗が替わっても描き直さない（pele は CSS 変数で色を持つ）
 const diagram = css({
@@ -51,7 +52,8 @@ export function MermaidDiagram(props: MermaidDiagramProps) {
   const draw = () => {
     if (!element) return
     if (mounted) mounted.refresh()
-    else mounted = mount(element, props.source, { zoom: false, onError: () => {} })
+    // 図の中のリンクに残す scheme は、本文と同じ並び（pele の既定は http・https・mailto・tel）
+    else mounted = mount(element, props.source, { zoom: false, linkSchemes: urlSchemes, onError: () => {} })
   }
   // 島に置かれてから描く（幅と書体を測る）。その前に drawDiagrams が描いていれば、幅が同じなら何もしない
   onSettled(draw)

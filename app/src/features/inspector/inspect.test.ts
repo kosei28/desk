@@ -52,12 +52,18 @@ const task = (slug: string, title: string, fields: Partial<Doc> = {}) =>
   doc(`${P}/tasks/${slug}.md`, { kind: "task", title, status: "todo", ...fields })
 
 describe("inspect", () => {
-  it("頭は書いてある順に、名前の付いたキーは名前で、決まりに無いキーは綴りのまま出す。空の値は出さない", () => {
+  it("頭は書いてある順に、名前の付いたキーは名前で、決まりに無いキーは綴りのまま出す。空の値は出さない。外の URL は本文と同じ scheme のものだけ押せる形にする", () => {
     const here = doc(`${P}/library/2026-11-10-scroll.md`, {
       kind: "library",
       frontmatter: fm({
         reviewer: "ichiro",
         url: "https://example.com/infinite-scroll",
+        contact: "mailto:cook@example.com",
+        phone: "tel:+81-3-0000-0000",
+        channel: "irc://irc.example.com/recipes",
+        chat: "xmpp:planner@example.com",
+        slack: "slack://open",
+        spaced: "https://example.com/a b",
         source: "2026-11-10 の勉強会",
         empty: null,
         blank: "",
@@ -72,6 +78,12 @@ describe("inspect", () => {
     expect(content.head).toEqual([
       { label: "reviewer", value: "ichiro", form: "text" },
       { label: "URL", value: "https://example.com/infinite-scroll", form: "url" },
+      { label: "contact", value: "mailto:cook@example.com", form: "url" },
+      { label: "phone", value: "tel:+81-3-0000-0000", form: "url" },
+      { label: "channel", value: "irc://irc.example.com/recipes", form: "url" },
+      { label: "chat", value: "xmpp:planner@example.com", form: "url" },
+      { label: "slack", value: "slack://open", form: "text" },
+      { label: "spaced", value: "https://example.com/a b", form: "text" },
       { label: "出どころ", value: "2026-11-10 の勉強会", form: "text" },
       { label: "確認日", value: "2026-11-12", form: "text" },
       { label: "概要", value: "無限スクロールの落とし穴", form: "text" },

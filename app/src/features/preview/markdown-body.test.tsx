@@ -211,6 +211,28 @@ describe("MarkdownBody", () => {
     expect(onOpen).not.toHaveBeenCalled()
   })
 
+  it("図と同じ scheme（tel・irc・ircs・xmpp）も onOpenUrl で開き、ほかの scheme のリンクは消毒で先が消える", async () => {
+    const { getByText, onOpen, onOpenUrl } = await show(
+      [
+        "[電話](tel:+81-3-0000-0000) [チャンネル](irc://irc.example.com/recipes) [暗号](ircs://irc.example.com/recipes)",
+        "[チャット](xmpp:planner@example.com) [Slack](slack://open) [FTP](ftp://example.com/a)",
+      ].join("\n"),
+      [],
+    )
+    for (const text of ["電話", "チャンネル", "暗号", "チャット"]) expect(press(getByText(text)), text).toBe(true)
+    expect(getByText("Slack").closest("a")?.hasAttribute("href")).toBe(false)
+    expect(getByText("FTP").closest("a")?.hasAttribute("href")).toBe(false)
+    press(getByText("Slack"))
+    press(getByText("FTP"))
+    expect(onOpenUrl.mock.calls).toEqual([
+      ["tel:+81-3-0000-0000"],
+      ["irc://irc.example.com/recipes"],
+      ["ircs://irc.example.com/recipes"],
+      ["xmpp:planner@example.com"],
+    ])
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+
   it("# のリンク（脚注など）は、いちばん近いスクロールする祖先（島）だけを動かして、本文の中のその場所へ送る", async () => {
     const current = doc(here)
     const byPath = new Map([current, ...docs].map((d) => [d.path, d]))
