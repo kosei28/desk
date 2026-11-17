@@ -161,6 +161,21 @@ describe("コードの色", () => {
   })
 })
 
+describe("コードの写すボタン", () => {
+  it("コードの塊の右上のボタンで、中の文字を写す（末尾の改行は外す）。写したら印を替える", async () => {
+    const writeText = vi.fn(async (_text: string) => {})
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    const { container, getAllByRole } = await show("```ts\nconst a = 1\n```\n\n```\nplain\n```\n\n本文の `code`")
+    const buttons = getAllByRole("button", { name: "コードを写す" })
+    expect(buttons).toHaveLength(2)
+    buttons[0]!.click()
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith("const a = 1"))
+    buttons[1]!.click()
+    await vi.waitFor(() => expect(writeText).toHaveBeenLastCalledWith("plain"))
+    await vi.waitFor(() => expect(container.querySelectorAll("[aria-label='写した']")).toHaveLength(2))
+  })
+})
+
 describe("mermaid の図", () => {
   it("```mermaid は pele で SVG の図にし、コードとしては出さない", async () => {
     const { container } = await show("```mermaid\nflowchart LR\n  A[献立] --> B[印刷]\n```")

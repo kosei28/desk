@@ -26,10 +26,14 @@ export const semanticTokens = defineSemanticTokens({
     },
     // 読む面。真ん中の、いま開いているファイルを載せる面。背景に重ねて、壁紙が背景の 3 分の 1 ほど透ける
     surface: {
-      value: {
-        base: "color-mix(in srgb, {colors.ink.99} {opacity.surface}, transparent)",
-        _dark: "color-mix(in srgb, {colors.ink.29} {opacity.surface}, transparent)",
+      DEFAULT: {
+        value: {
+          base: "color-mix(in srgb, {colors.ink.99} {opacity.surface}, transparent)",
+          _dark: "color-mix(in srgb, {colors.ink.29} {opacity.surface}, transparent)",
+        },
       },
+      // 島と同じ色を透かさずに塗る。島の中で文字に重ねるもの（本文のコードを写すボタン）の地。下の文字が透けない
+      solid: pair("ink.99", "ink.29"),
     },
     // 選んでいるタブと、左の列の選んでいる行の地。読む面と同じ（色も透け方も）で、影 raised と組んで背景から少し浮かせる。
     // 後ろが白に近いライトや、後ろが暗いダークでは地の差がほとんど無く、raised の縁の線と影で分ける

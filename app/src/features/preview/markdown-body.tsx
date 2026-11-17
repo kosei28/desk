@@ -6,6 +6,7 @@ import { createMemo, omit } from "solid-js"
 import { prose } from "../../../styled-system/recipes"
 import { resolveLink } from "../../data/commands"
 import type { Doc } from "../../data/types"
+import { CodeBlock } from "./code-block"
 import { mermaidTag } from "./markdown"
 import { MermaidDiagram } from "./mermaid-diagram"
 import { diagramLinkAction, imageSrc, type LinkAction, linkAction, srcsetCandidates } from "./resolve"
@@ -50,6 +51,7 @@ export function scrollToTop(target: Element) {
  * リンクは押しても webview の中で移らず、中のファイルは onOpen、外の URL は onOpenUrl、# の先（見出し・脚注）は本文の中へ送る。
  * 画像は、ローカルのファイルなら Rust の scheme から、http・https ならそのまま読む。
  * mermaid の図は pele で描く。図の中のリンクも webview の中では移らず、本文のリンクと同じく開く（先は core に解いてもらう）。
+ * コードの塊には、右上に写すボタンを出す。
  */
 export function MarkdownBody(props: MarkdownBodyProps) {
   let root: HTMLDivElement | undefined
@@ -118,7 +120,7 @@ export function MarkdownBody(props: MarkdownBodyProps) {
       elementAttributeNameCase: "html",
       stylePropertyNameCase: "css",
       // 型は React の JSX を前提にしているので、Solid の部品は合わない。props の形は html の名前（class・srcset）
-      components: { a: BodyLink, img: BodyImage, source: BodySource, [mermaidTag]: BodyMermaid } as never,
+      components: { a: BodyLink, img: BodyImage, source: BodySource, pre: CodeBlock, [mermaidTag]: BodyMermaid } as never,
     }),
   )
 
