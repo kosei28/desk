@@ -16,6 +16,7 @@ import { DeskInspector } from "./features/inspector/desk-inspector"
 import { inspect, linkIndex } from "./features/inspector/inspect"
 import { createSectionMemory } from "./features/inspector/sections"
 import { FilePreview } from "./features/preview/file-preview"
+import { drawDiagrams } from "./features/preview/mermaid-diagram"
 import { dragRegion } from "./features/window/drag-region"
 
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1)
@@ -87,7 +88,12 @@ export function App() {
     if (path === null || untrack(anchor)?.path === path) return
     // 中身が替わって縮んだ所で覚えた位置が上書きされる前に、戻す先を決めておく
     const top = scrolls.get(path) ?? 0
-    const frame = requestAnimationFrame(() => island?.scrollTo?.({ top }))
+    const frame = requestAnimationFrame(() => {
+      if (!island) return
+      // 隠れている間に描いた図や、隠れている間に窓の幅が変わった図は、戻す前に今の幅で組んで高さを決める
+      drawDiagrams(island)
+      island.scrollTo?.({ top })
+    })
     return () => cancelAnimationFrame(frame)
   })
 

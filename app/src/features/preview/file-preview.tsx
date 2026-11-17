@@ -6,6 +6,7 @@ import { getBody } from "../../data/commands"
 import type { Doc } from "../../data/types"
 import { markdownToHast } from "./markdown"
 import { MarkdownBody, scrollBox, scrollToTop } from "./markdown-body"
+import { drawDiagrams } from "./mermaid-diagram"
 import { imageUrl } from "./resolve"
 
 /** 島に画像として出すファイルの拡張子 */
@@ -92,6 +93,8 @@ export function FilePreview(props: FilePreviewProps) {
     () => (drawn() ? props.anchor : undefined),
     (anchor) => {
       if (!anchor || !root) return
+      // 図は島に置かれた後に描くので、その前に描いて高さを決めておく（図より下の見出しの位置がずれないように）
+      drawDiagrams(root)
       const target = root.querySelector(`[id="${CSS.escape(anchor.id)}"]`)
       if (target) scrollToTop(target)
       else scrollBox(root)?.scrollTo?.({ top: 0 })
