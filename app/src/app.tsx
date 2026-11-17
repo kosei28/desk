@@ -1,7 +1,7 @@
 import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/solid/resizable"
 import { useShortcut } from "@ui-sdk/solid/shortcuts"
 import { Tabs, TabsPanel } from "@ui-sdk/solid/tabs"
-import { createEffect, createMemo, For, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js"
 import { css, cx } from "../styled-system/css"
 import { link, resizeHandle } from "../styled-system/recipes"
 import { FileTabList, type TabEntry } from "./components/file-tabs"
@@ -15,9 +15,13 @@ import { FileTree } from "./features/file-tree/file-tree"
 import { DeskInspector } from "./features/inspector/desk-inspector"
 import { inspect, linkIndex } from "./features/inspector/inspect"
 import { createSectionMemory } from "./features/inspector/sections"
+import { FilePreview } from "./features/preview/file-preview"
 import { dragRegion } from "./features/window/drag-region"
 
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1)
+
+/** 外の URL を既定のアプリで開く（右の列の URL の値と、本文のリンク） */
+const openExternal = (url: string) => void openUrl(url).catch((e: unknown) => console.error(e))
 
 /** タブと島の見出しの言葉。見出しが無ければファイル名 */
 const titleOf = (doc: Doc) => doc.title || baseName(doc.path)
@@ -55,6 +59,37 @@ export function App() {
   })
   useShortcut("ctrl+tab", () => desk.cycle(1), { when: () => desk.tabs().length > 1 })
   useShortcut("ctrl+shift+tab", () => desk.cycle(-1), { when: () => desk.tabs().length > 1 })
+
+  // 島のスクロールの位置はタブごとに覚え、タブを切り替えたらそのタブの位置に戻す。新しく開いたタブは上から。
+  // 島は全部のタブで 1 つなので、覚えないと前のタブの位置のまま次のタブが出る
+  const scrolls = new Map<string, number>()
+  let island: HTMLElement | undefined
+  const rememberScroll = () => {
+    const path = desk.selected()
+    if (path !== null && island) scrolls.set(path, island.scrollTop)
+  }
+  // 本文のリンク（file.md#見出し）で開いたときの送る先。そのタブが出て、中身を描けたら送り、消す。
+  // 送るまでそのタブは隠し、島の位置も戻さない（上から描いたものや、前の位置の絵を見せない）
+  const [anchor, setAnchor] = createSignal<{ path: string; id: string }>()
+  const openFromBody = (path: string, id?: string) => {
+    setAnchor(id === undefined ? undefined : { path, id })
+    desk.open(path)
+  }
+  // 閉じたタブ（ファイルが消えて外れたタブも）の位置と、送る前に閉じたタブの送る先は忘れる
+  createEffect(desk.tabs, (paths) => {
+    for (const path of scrolls.keys()) if (!paths.includes(path)) scrolls.delete(path)
+    const pending = untrack(anchor)
+    if (pending && !paths.includes(pending.path)) setAnchor(undefined)
+  })
+
+  createEffect(desk.selected, (path) => {
+    // 見出しへ送る途中のタブは、送る所（FilePreview）が位置を決める
+    if (path === null || untrack(anchor)?.path === path) return
+    // 中身が替わって縮んだ所で覚えた位置が上書きされる前に、戻す先を決めておく
+    const top = scrolls.get(path) ?? 0
+    const frame = requestAnimationFrame(() => island?.scrollTo?.({ top }))
+    return () => cancelAnimationFrame(frame)
+  })
 
   // 今のタブが変わったら、タブの並びをそのタブが見える所まで送る（送れる側の端のぼかしの分は、レシピの scroll-padding で空ける）
   let tabStrip: HTMLDivElement | undefined
@@ -141,6 +176,10 @@ export function App() {
               <FileTabList tabs={tabs()} onClose={(path) => desk.close(path)} class={css({ flex: "1" })} />
             </div>
             <Surface
+              ref={(element) => {
+                island = element
+                element.addEventListener("scroll", rememberScroll, { passive: true })
+              }}
               class={cx(
                 pressable,
                 css({ flex: "1", minHeight: "0", zIndex: "surface" }),
@@ -153,13 +192,31 @@ export function App() {
                     when={desk.selectedDoc()}
                     fallback={<p class={css({ textAlign: "center", color: "fg.muted" })}>ファイルを選ぶと、ここに開く</p>}
                   >
-                    {/* 本文と右クリックのメニューは順 5 の続き（5b・5d） */}
+                    {/* 右クリックのメニューは順 5 の続き（5d） */}
                     <For each={tabs()} keyed={(tab) => tab.path}>
                       {(tab) => (
-                        <TabsPanel value={tab().path} class={css({ outline: "none" })}>
-                          <header>
-                            <h1 class={css({ textStyle: "title" })}>{tab().title}</h1>
-                          </header>
+                        // ほかのタブも隠して残す。移るたびに本文を読み直して上から描き直すと、戻した位置や送った先の前に、上の絵が出る
+                        <TabsPanel
+                          value={tab().path}
+                          keepMounted
+                          class={css({ outline: "none" })}
+                          style={{ visibility: anchor()?.path === tab().path ? "hidden" : undefined }}
+                        >
+                          <Show when={links().byPath.get(tab().path)}>
+                            {(doc) => (
+                              <FilePreview
+                                doc={doc()}
+                                title={tab().title}
+                                byPath={links().byPath}
+                                onOpen={openFromBody}
+                                onOpenUrl={openExternal}
+                                anchor={
+                                  anchor()?.path === tab().path && desk.selected() === tab().path ? anchor() : undefined
+                                }
+                                onAnchorDone={() => setAnchor(undefined)}
+                              />
+                            )}
+                          </Show>
                         </TabsPanel>
                       )}
                     </For>
@@ -195,7 +252,7 @@ export function App() {
                   content={content()}
                   sections={sections}
                   onOpen={(path) => desk.open(path)}
-                  onOpenUrl={(url) => void openUrl(url).catch((e: unknown) => console.error(e))}
+                  onOpenUrl={openExternal}
                 />
               </aside>
             )}

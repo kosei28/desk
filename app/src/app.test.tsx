@@ -55,7 +55,16 @@ const workbench: Index = {
 }
 
 /** Rust の側の代わり。呼ばれたコマンドを覚える */
-function backend(state: { open: Index | null; picked?: Index }) {
+type Backend = {
+  open: Index | null
+  picked?: Index
+  /** 本文のコマンドが返す本文（ルートからのパス → 本文）。無いパスは空 */
+  bodies?: Record<string, string>
+  /** あれば、本文のコマンドはこれが済むまで返さない（webview に本文が届くまでの間を見る） */
+  bodyHeld?: Promise<void>
+}
+
+function backend(state: Backend) {
   const calls: string[] = []
   /** 呼んだコマンドと、渡した引数 */
   const requests: { cmd: string; args: unknown }[] = []
@@ -66,6 +75,10 @@ function backend(state: { open: Index | null; picked?: Index }) {
         requests.push({ cmd, args })
       }
       if (cmd === "index") return state.open
+      if (cmd === "body") {
+        const text = state.bodies?.[(args as { path: string }).path] ?? ""
+        return state.bodyHeld ? state.bodyHeld.then(() => text) : text
+      }
       if (cmd === "choose_root") {
         if (state.picked) state.open = state.picked
         return null
@@ -78,7 +91,7 @@ function backend(state: { open: Index | null; picked?: Index }) {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-async function renderApp(state: { open: Index | null; picked?: Index } = { open: workbench }) {
+async function renderApp(state: Backend = { open: workbench }) {
   const { calls, requests } = backend(state)
   const result = render(() => <App />)
   await vi.waitFor(() => expect(calls).toContain("index"))
@@ -88,6 +101,8 @@ async function renderApp(state: { open: Index | null; picked?: Index } = { open:
 }
 
 const surface = () => screen.getByRole("article")
+/** 今のタブのパネル。ほかのタブのパネルも、隠して島の中に残る */
+const shown = () => surface().querySelector<HTMLElement>("[role=tabpanel][data-selected]")!
 const tree = () => screen.getByRole("tree", { name: "ファイル" })
 const tabList = () => screen.getByRole("tablist", { name: "開いているファイル" })
 const tabNames = () => within(tabList()).queryAllByRole("tab").map((tab) => tab.textContent)
@@ -463,6 +478,291 @@ describe("App の右の列", () => {
     await vi.waitFor(() => expect(within(tree()).queryByText("inbox")).not.toBeNull())
     expect(columnRow("用紙の大きさを決める")).toBe(row)
     expect(document.activeElement).toBe(row)
+  })
+})
+
+describe("App の島", () => {
+  const SAMPLE = "projects/recipe-app/artifacts/assets/print-sample.png"
+  const NOTES = "projects/recipe-app/artifacts/assets/notes.txt"
+  const PHOTO = "projects/recipe-app/inbox/2026-11-12-photo.png"
+  const island: Index = {
+    ...linked,
+    docs: [
+      ...linked.docs.map((d) =>
+        d.path === MENU
+          ? {
+              ...d,
+              description: "1 週間分の献立を A4 の 1 枚に収めて印刷する",
+              links: [{ ...relative("body", LAYOUT), raw: "../artifacts/print-layout.md" }],
+            }
+          : d,
+      ),
+      doc(SAMPLE, "", { is_md: false, asset: true }),
+      doc(NOTES, "", { is_md: false, asset: true }),
+      doc(PHOTO, "", { is_md: false }),
+    ],
+  }
+  const menuBody = [
+    "",
+    "# 献立を印刷できるようにする",
+    "",
+    "## 目的",
+    "1 週間分を [印刷のレイアウト](../artifacts/print-layout.md) のとおりに並べる。",
+  ].join("\n")
+  const body = () => shown().querySelector(".prose")
+
+  async function openMenu(state: Backend) {
+    const result = await renderApp(state)
+    await openFolders("projects", "recipe-app", "tasks")
+    await click(rowOf("献立を印刷できるようにする"))
+    await vi.waitFor(() => expect(body()).not.toBeNull())
+    return result
+  }
+
+  it("見出しの下に description、その下に本文を出す。本文の見出し（# の行）は重ねて出さない", async () => {
+    const { requests } = await openMenu({ open: island, bodies: { [MENU]: menuBody } })
+    expect(requests).toContainEqual({ cmd: "body", args: { path: MENU } })
+    const header = shown().querySelector("header")!
+    expect([...header.children].map((el) => `${el.tagName} ${el.textContent}`)).toEqual([
+      "H1 献立を印刷できるようにする",
+      "P 1 週間分の献立を A4 の 1 枚に収めて印刷する",
+    ])
+    expect(within(surface()).getAllByRole("heading").map((h) => h.textContent)).toEqual([
+      "献立を印刷できるようにする",
+      "目的",
+    ])
+  })
+
+  it("本文のリンクを押すと、webview の中で移らずに新しいタブで開く", async () => {
+    await openMenu({ open: island, bodies: { [MENU]: menuBody } })
+    const link = within(body() as HTMLElement).getByRole("link", { name: "印刷のレイアウト" })
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true })
+    link.dispatchEvent(event)
+    flush()
+    expect(event.defaultPrevented).toBe(true)
+    expect(tabNames()).toEqual(["献立を印刷できるようにする", "印刷のレイアウト"])
+    expect(heading()).toBe("印刷のレイアウト")
+  })
+
+  it("開いているタブに移っても、本文を読み直さず、描いたまま出す", async () => {
+    const { requests } = await openMenu({ open: island, bodies: { [MENU]: menuBody } })
+    const menu = body()
+    within(menu as HTMLElement).getByRole("link", { name: "印刷のレイアウト" }).click()
+    flush()
+    await vi.waitFor(() => expect(heading()).toBe("印刷のレイアウト"))
+    const asked = requests.filter((r) => r.cmd === "body").length
+    await click(within(tabList()).getAllByRole("tab")[0])
+    expect(heading()).toBe("献立を印刷できるようにする")
+    expect(body()).toBe(menu)
+    expect(requests.filter((r) => r.cmd === "body").length).toBe(asked)
+  })
+
+  it("島のスクロールの位置はタブごとに覚え、切り替えると戻す。新しく開いたタブと開き直したタブは上から", async () => {
+    await openMenu({ open: island, bodies: { [MENU]: menuBody } })
+    // jsdom はスクロールしないので、位置を持たせて scrollTo を見る
+    const scrolled: number[] = []
+    let top = 0
+    Object.defineProperty(surface(), "scrollTop", { get: () => top, configurable: true })
+    surface().scrollTo = ((options: ScrollToOptions) => {
+      top = options.top ?? 0
+      scrolled.push(top)
+    }) as HTMLElement["scrollTo"]
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+    const scrollTo = (to: number) => {
+      top = to
+      surface().dispatchEvent(new Event("scroll"))
+    }
+
+    scrollTo(320)
+    within(body() as HTMLElement).getByRole("link", { name: "印刷のレイアウト" }).click()
+    flush()
+    await frame()
+    expect(heading()).toBe("印刷のレイアウト")
+    expect(scrolled).toEqual([0])
+
+    scrollTo(80)
+    await click(within(tabList()).getAllByRole("tab")[0])
+    await frame()
+    expect(heading()).toBe("献立を印刷できるようにする")
+    expect(scrolled).toEqual([0, 320])
+
+    // 閉じたタブの位置は忘れる
+    press("w", { metaKey: true })
+    await frame()
+    expect(heading()).toBe("印刷のレイアウト")
+    expect(scrolled).toEqual([0, 320, 80])
+    await click(rowOf("献立を印刷できるようにする"))
+    await frame()
+    expect(scrolled).toEqual([0, 320, 80, 0])
+  })
+
+  it("ツリーが変わったら本文を読み直す。中身が同じなら描き直さない", async () => {
+    const state: Backend = { open: island, bodies: { [MENU]: menuBody } }
+    const { requests } = await openMenu(state)
+    const before = body()
+    const bodyRequests = () => requests.filter((r) => r.cmd === "body").length
+    const asked = bodyRequests()
+    // Rust はツリーが変わるたびに索引を作り直して返す（どのファイルも新しいもの）
+    state.open = structuredClone({
+      ...island,
+      docs: [...island.docs, doc("projects/recipe-app/inbox/2026-11-17-note.md", "メモ")],
+    })
+    await emit("tree-changed")
+    await vi.waitFor(() => expect(within(tree()).queryByText("inbox")).not.toBeNull())
+    await tick()
+    flush()
+    expect(bodyRequests()).toBe(asked + 1)
+    expect(body()).toBe(before)
+
+    state.open = structuredClone(state.open)
+    state.bodies = { [MENU]: `${menuBody}\n\n## 手順\n- [ ] 並べる` }
+    await emit("tree-changed")
+    await vi.waitFor(() => expect(within(surface()).queryByRole("heading", { name: "手順" })).not.toBeNull())
+    expect(surface().querySelector("input[type=checkbox]")).not.toBeNull()
+  })
+
+  describe("本文の file.md#見出し のリンク", () => {
+    const withAnchor: Index = {
+      ...island,
+      docs: island.docs.map((d) =>
+        d.path === MENU
+          ? { ...d, links: [{ ...relative("body", LAYOUT), raw: "../artifacts/print-layout.md#余白", anchor: "余白" }] }
+          : d,
+      ),
+    }
+    const bodies = {
+      [MENU]: `${menuBody}\n\n[余白の決め方](../artifacts/print-layout.md#余白)`,
+      [LAYOUT]: "# 印刷のレイアウト\n\n本文\n\n## 余白\n",
+    }
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+    // 隠したタブは読み上げに出ないので、役割ではなく要素で探す
+    const panelOf = (title: string) =>
+      [...surface().querySelectorAll("h1")].find((h) => h.textContent === title)!.closest<HTMLElement>("[role=tabpanel]")!
+
+    /** 島の位置を持たせ、scrollTo を覚える。島の上の端は 20、見出し「余白」は島の位置から 600 下にある */
+    function watchIsland() {
+      // jsdom にはレシピの CSS が無いので、島がスクロールする箱だと分かるようにする
+      surface().style.overflowY = "auto"
+      const scrolled: number[] = []
+      let top = 0
+      Object.defineProperty(surface(), "scrollTop", { get: () => top, configurable: true })
+      surface().scrollTo = ((options: ScrollToOptions) => {
+        top = options.top ?? 0
+        scrolled.push(top)
+      }) as HTMLElement["scrollTo"]
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+        // タブを押す所（click）は left・width も読む
+        const y = this === surface() ? 20 : this.id === "user-content-余白" ? 620 - top : 0
+        return { top: y, left: 0, width: 0, height: 0 } as DOMRect
+      })
+      const scrollTo = (to: number) => {
+        top = to
+        surface().dispatchEvent(new Event("scroll"))
+      }
+      return { scrolled, scrollTo }
+    }
+    const follow = () => {
+      within(body() as HTMLElement).getByRole("link", { name: "余白の決め方" }).click()
+      flush()
+    }
+
+    afterEach(() => vi.restoreAllMocks())
+
+    it("新しいタブに開くと、本文を描くまでそのタブを隠し、描いたらすぐ見出しの位置で出す（上から描いたものを見せない）", async () => {
+      const state: Backend = { open: withAnchor, bodies }
+      await openMenu(state)
+      const { scrolled } = watchIsland()
+      let release!: () => void
+      state.bodyHeld = new Promise((resolve) => (release = resolve))
+
+      follow()
+      await tick()
+      flush()
+      expect(tabNames()).toEqual(["献立を印刷できるようにする", "印刷のレイアウト"])
+      expect(panelOf("印刷のレイアウト").style.visibility).toBe("hidden")
+      await frame()
+      expect(scrolled).toEqual([])
+
+      release()
+      await vi.waitFor(() => expect(surface().querySelector('[id="user-content-余白"]')).not.toBeNull())
+      // 本文を描いたのと同じ流れの中で（次のフレームを待たずに）送り、出す
+      expect(scrolled).toEqual([600])
+      expect(panelOf("印刷のレイアウト").style.visibility).toBe("")
+      for (let i = 0; i < 3; i++) await frame()
+      expect(scrolled).toEqual([600])
+    })
+
+    it("もう開いているタブに移るときは、そのタブの前の位置を見せず、見出しの位置で出す", async () => {
+      await openMenu({ open: withAnchor, bodies })
+      const { scrolled, scrollTo } = watchIsland()
+      follow()
+      await vi.waitFor(() => expect(surface().querySelector('[id="user-content-余白"]')).not.toBeNull())
+      scrollTo(150)
+      await click(within(tabList()).getAllByRole("tab")[0])
+      await frame()
+      expect(heading()).toBe("献立を印刷できるようにする")
+      const before = scrolled.length
+
+      follow()
+      expect(heading()).toBe("印刷のレイアウト")
+      expect(scrolled.slice(before)).toEqual([600])
+      for (let i = 0; i < 3; i++) await frame()
+      expect(scrolled.slice(before)).toEqual([600])
+    })
+
+    it("見出しが無ければ、上から出す", async () => {
+      await openMenu({
+        open: withAnchor,
+        bodies: { ...bodies, [LAYOUT]: "# 印刷のレイアウト\n\n本文\n" },
+      })
+      const { scrolled, scrollTo } = watchIsland()
+      scrollTo(320)
+      follow()
+      await vi.waitFor(() => expect(within(surface()).queryByText("本文")).not.toBeNull())
+      expect(scrolled).toEqual([0])
+      expect(panelOf("印刷のレイアウト").style.visibility).toBe("")
+    })
+
+    it("送る前にそのタブを閉じたら、送る先は忘れる。開き直すと上から出す", async () => {
+      const state: Backend = { open: withAnchor, bodies }
+      await openMenu(state)
+      const { scrolled } = watchIsland()
+      let release!: () => void
+      state.bodyHeld = new Promise((resolve) => (release = resolve))
+      follow()
+      await tick()
+      flush()
+      press("w", { metaKey: true })
+      flush()
+      expect(tabNames()).toEqual(["献立を印刷できるようにする"])
+
+      release()
+      // 本文のリンクで開いたとき、左の列はその行まで開いている
+      await click(rowOf("印刷のレイアウト"))
+      await vi.waitFor(() => expect(surface().querySelector('[id="user-content-余白"]')).not.toBeNull())
+      await frame()
+      expect(heading()).toBe("印刷のレイアウト")
+      expect(panelOf("印刷のレイアウト").style.visibility).toBe("")
+      // 島の位置を戻す所が上（0）へ送るだけで、「余白」（600）へは送らない
+      expect(new Set(scrolled)).toEqual(new Set([0]))
+    })
+  })
+
+  it("画像のファイルは（assets/ の外でも）島に画像を出し、ほかの .md でないファイルは見出しだけ出す", async () => {
+    const { requests } = await renderApp({ open: island })
+    await openFolders("projects", "recipe-app", "inbox")
+    await click(rowOf("2026-11-12-photo.png"))
+    expect(shown().querySelector("img")?.getAttribute("src")).toBe(`desk://localhost/${encodeURIComponent(PHOTO)}`)
+    await openFolders("artifacts", "assets")
+    await click(rowOf("print-sample.png"))
+    expect(heading()).toBe("print-sample.png")
+    expect(shown().querySelector("img")?.getAttribute("src")).toBe(`desk://localhost/${encodeURIComponent(SAMPLE)}`)
+    // 読み上げで分かるよう、alt はファイル名
+    expect(shown().querySelector("img")?.getAttribute("alt")).toBe(SAMPLE.slice(SAMPLE.lastIndexOf("/") + 1))
+    await click(rowOf("notes.txt"))
+    expect(heading()).toBe("notes.txt")
+    expect(shown().querySelector("img, .prose")).toBeNull()
+    expect(requests.filter((r) => r.cmd === "body")).toEqual([])
   })
 })
 

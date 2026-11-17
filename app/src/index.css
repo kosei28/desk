@@ -26,3 +26,9 @@ body,
 html {
   overscroll-behavior: none;
 }
+
+/* ウィンドウ全体はスクロールしない。スクロールするのは列と島の中だけ。中のものが何かの拍子にはみ出しても、窓の枠ごとは送らせない */
+html,
+body {
+  overflow: hidden;
+}
