@@ -1,5 +1,6 @@
 mod desk;
 mod external;
+mod image;
 mod navigation;
 mod root;
 mod titlebar;
@@ -13,6 +14,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(navigation::init())
         .manage(desk::Desk::default())
+        .register_asynchronous_uri_scheme_protocol(image::SCHEME, image::handle)
         .setup(|app| {
             if let Some(window) = tauri::Manager::get_webview_window(app, "main") {
                 traffic_lights::hide_while_exiting_fullscreen(&window)?;
